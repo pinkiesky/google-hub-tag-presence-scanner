@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+set -euo pipefail
+source "$(dirname -- "${BASH_SOURCE[0]}")/remote_common.sh"
+
+remote_root <<'REMOTE'
+test -f /opt/cat-tracker/pyproject.toml || { echo 'Run install_remote first.' >&2; exit 1; }
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install -y python3 python3-venv python3-dev build-essential bluez libbluetooth-dev sqlite3 rsync
+python3 -c 'import sys; sys.exit("Python 3.11+ required; upgrade the OS/interpreter first.") if sys.version_info < (3, 11) else None'
+groupadd --system --force bluetooth
+if ! id cat-tracker >/dev/null 2>&1; then
+    useradd --system --user-group --home-dir /var/lib/cat-tracker \
+        --no-create-home --shell /usr/sbin/nologin cat-tracker
+fi
+usermod -aG bluetooth cat-tracker
+install -d -o root -g cat-tracker -m 0750 /etc/cat-tracker
+install -d -o cat-tracker -g cat-tracker -m 0700 /var/lib/cat-tracker
+if [[ ! -e /etc/cat-tracker/config.toml ]]; then
+    install -o root -g cat-tracker -m 0640 /opt/cat-tracker/config.example.toml /etc/cat-tracker/config.toml
+fi
+if [[ ! -e /etc/cat-tracker/telegram.env ]]; then
+    install -o root -g root -m 0600 /opt/cat-tracker/.env.example /etc/cat-tracker/telegram.env
+fi
+python3 -m venv /opt/cat-tracker/.venv
+/opt/cat-tracker/.venv/bin/python -m pip install --upgrade /opt/cat-tracker
+install -m 0644 /opt/cat-tracker/deploy/cat-tracker.service /etc/systemd/system/cat-tracker.service
+install -m 0644 /opt/cat-tracker/deploy/90-cat-tracker-bluetooth.conf /etc/dbus-1/system.d/90-cat-tracker-bluetooth.conf
+systemctl reload dbus
+systemctl daemon-reload
+systemctl enable --now bluetooth
+bluetoothctl power on
+systemctl enable cat-tracker
+REMOTE
+echo 'Infrastructure ready. Add tag secrets and Telegram credentials, then run restart_remote.'
