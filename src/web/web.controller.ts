@@ -1,5 +1,7 @@
 import { Controller, Get, Header } from '@nestjs/common';
+
 import { WebViewService } from './web-view.service';
+
 @Controller()
 export class WebController {
   constructor(private readonly view: WebViewService) {}
@@ -8,6 +10,7 @@ export class WebController {
   page(): string {
     return this.view.render();
   }
+
   @Get('/style.css')
   @Header('Content-Type', 'text/css; charset=utf-8')
   style(): string {

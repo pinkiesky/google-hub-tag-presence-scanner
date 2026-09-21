@@ -1,7 +1,9 @@
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+
 import { loadConfiguration } from '../src/config/configuration';
+
 let directory: string, path: string;
 beforeEach(() => {
   directory = mkdtempSync(join(tmpdir(), 'cat-config-'));

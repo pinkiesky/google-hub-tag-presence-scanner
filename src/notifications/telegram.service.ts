@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
+
 import { TrackerConfig } from '../config/config.service';
+
 export class DeliveryError extends Error {
   constructor(readonly retryAfter = 0) {
     super('Telegram delivery failed');
@@ -22,9 +24,17 @@ export class TelegramService {
         },
       );
       const data: unknown = await response.json();
-      if (!data || typeof data !== 'object') throw new DeliveryError();
+
+      if (!data || typeof data !== 'object') {
+        throw new DeliveryError();
+      }
+
       const result = data as { ok?: unknown; parameters?: { retry_after?: unknown } };
-      if (response.ok && result.ok === true) return;
+
+      if (response.ok && result.ok === true) {
+        return;
+      }
+
       const retry = result.parameters?.retry_after;
       throw new DeliveryError(typeof retry === 'number' && retry > 0 && retry < 86400 ? retry : 0);
     } catch (error) {

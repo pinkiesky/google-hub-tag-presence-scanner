@@ -1,7 +1,8 @@
-import { TelegramService, DeliveryError } from '../src/notifications/telegram.service';
-import { PresenceWatchdogService } from '../src/presence/presence-watchdog.service';
 import { LifecycleService } from '../src/lifecycle.service';
+import { DeliveryError, TelegramService } from '../src/notifications/telegram.service';
+import { PresenceWatchdogService } from '../src/presence/presence-watchdog.service';
 import { config, manager } from './helpers';
+
 afterEach(() => {
   jest.restoreAllMocks();
   jest.useRealTimers();
@@ -19,9 +20,11 @@ test.each([
     .mockResolvedValue(new Response(JSON.stringify(body), { status }));
   const telegram = new TelegramService(config()),
     m = manager();
+
   try {
     m.tick(3601, 3601);
     const item = m.claim(3601, 3601)!;
+
     try {
       await telegram.send(item.message);
       m.delivered(item);
@@ -30,6 +33,7 @@ test.each([
       expect(String(error)).not.toContain('test-secret-token');
       m.failed(item, 3601, (error as DeliveryError).retryAfter);
     }
+
     expect(m.states.get('a')!.alert_sent).toBe(success);
     expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: 'POST', redirect: 'error' });
   } finally {
@@ -38,9 +42,13 @@ test.each([
 });
 test.each(['network', 'json', 'timeout'])('sanitizes %s errors', async (kind) => {
   const mock = jest.spyOn(global, 'fetch');
-  if (kind === 'json') mock.mockResolvedValue(new Response('bad gateway', { status: 502 }));
-  else
+
+  if (kind === 'json') {
+    mock.mockResolvedValue(new Response('bad gateway', { status: 502 }));
+  } else {
     mock.mockRejectedValue(new Error('https://api.telegram.org/bottest-secret-token/sendMessage'));
+  }
+
   await expect(new TelegramService(config()).send('test')).rejects.toThrow(
     'Telegram delivery failed',
   );
@@ -54,6 +62,7 @@ test('worker delivers recovery once and keeps failures queued', async () => {
     .mockRejectedValueOnce(new DeliveryError(90))
     .mockResolvedValue();
   const worker = new PresenceWatchdogService(m, telegram, new LifecycleService());
+
   try {
     m.observe('b', 3601, -70);
     m.tick(3601, 3601);

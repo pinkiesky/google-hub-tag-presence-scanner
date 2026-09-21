@@ -1,22 +1,27 @@
 import { EventEmitter } from 'node:events';
+
 import type { Noble } from '@stoprocent/noble';
+
 import { BluetoothService } from '../src/bluetooth/bluetooth.service';
+import { EidService } from '../src/fhn/eid.service';
 import { FhnParserService } from '../src/fhn/fhn-parser.service';
 import { TagMatcherService } from '../src/fhn/tag-matcher.service';
-import { EidService } from '../src/fhn/eid.service';
 import { LifecycleService } from '../src/lifecycle.service';
-import { config, manager, tags } from './helpers';
 import { PresenceService } from '../src/presence/presence.service';
+import { config, manager, tags } from './helpers';
+
 class FakeNoble extends EventEmitter {
   state = 'poweredOn';
   startScanningAsync = jest.fn(async () => {});
   stopScanningAsync = jest.fn(async () => {
     this.emit('scanStop');
   });
+
   stop = jest.fn();
 }
 let scanner: BluetoothService, noble: FakeNoble, presence: PresenceService;
 let fail: jest.SpyInstance;
+
 function setup(cycle = 300) {
   const cfg = config({ scannerCycleSeconds: cycle });
   noble = new FakeNoble();
@@ -32,6 +37,7 @@ function setup(cycle = 300) {
     factory,
     presence,
   );
+
   return factory;
 }
 beforeEach(() => jest.useFakeTimers({ now: (10000 + 2048) * 1000 }));
@@ -47,6 +53,7 @@ test('one scanner, unfiltered service data and both real matching paths', async 
   expect(factory).toHaveBeenCalledTimes(1);
   expect(factory).toHaveBeenCalledWith(0);
   expect(noble.startScanningAsync).toHaveBeenCalledWith([], true);
+
   for (const tag of tags) {
     const eid = new EidService().calculate(tag.eik, 2048);
     noble.emit('discover', {
@@ -58,6 +65,7 @@ test('one scanner, unfiltered service data and both real matching paths', async 
     });
     expect(presence.states.get(tag.id)!.last_rssi).toBe(-62);
   }
+
   await scanner.beforeApplicationShutdown();
   expect(noble.stopScanningAsync).toHaveBeenCalledTimes(1);
   expect(noble.stop).toHaveBeenCalled();

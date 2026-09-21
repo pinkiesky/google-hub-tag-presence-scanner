@@ -1,9 +1,11 @@
 import { DynamicModule, Global, Module } from '@nestjs/common';
-import { TrackerConfigModule } from './config/config.module';
+
 import { BluetoothModule } from './bluetooth/bluetooth.module';
+import { TrackerConfigModule } from './config/config.module';
+import { LifecycleService } from './lifecycle.service';
 import { NotificationsModule } from './notifications/notifications.module';
 import { WebModule } from './web/web.module';
-import { LifecycleService } from './lifecycle.service';
+
 @Global()
 @Module({ providers: [LifecycleService], exports: [LifecycleService] })
 class LifecycleModule {}

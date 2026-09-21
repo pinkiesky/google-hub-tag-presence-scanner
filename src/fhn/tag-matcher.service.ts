@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
+
 import { TrackerConfig } from '../config/config.service';
 import { EidService, ROTATION_SECONDS } from './eid.service';
+
 @Injectable()
 export class TagMatcherService {
   private windows: number[] = [];
@@ -9,12 +11,16 @@ export class TagMatcherService {
     private readonly config: TrackerConfig,
     private readonly eid: EidService,
   ) {}
+
   refresh(now: number): void {
     const windows = this.config.tags.map((t) =>
       Math.floor(Math.trunc(now - t.pairDate + t.clockOffsetSeconds) / ROTATION_SECONDS),
     );
-    if (windows.length === this.windows.length && windows.every((w, i) => w === this.windows[i]))
+
+    if (windows.length === this.windows.length && windows.every((w, i) => w === this.windows[i])) {
       return;
+    }
+
     const cache = new Map<string, string | null>();
     this.config.tags.forEach((tag, i) => {
       for (
@@ -34,6 +40,7 @@ export class TagMatcherService {
     this.windows = windows;
     new Logger(TagMatcherService.name).debug('EID cache refreshed');
   }
+
   match(eid: Buffer): string | null {
     return this.cache.get(eid.toString('hex')) ?? null;
   }

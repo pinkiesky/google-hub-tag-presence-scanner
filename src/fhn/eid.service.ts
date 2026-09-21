@@ -1,7 +1,9 @@
-import { Injectable } from '@nestjs/common';
 import { createCipheriv } from 'node:crypto';
-import { p256 } from '@noble/curves/nist.js';
+
+import { Injectable } from '@nestjs/common';
 import { weierstrass } from '@noble/curves/abstract/weierstrass.js';
+import { p256 } from '@noble/curves/nist.js';
+
 export const ROTATION_SECONDS = 1024;
 // SEC2 secp160r1 parameters from the working Python ecdsa curve.
 const secp160r1 = weierstrass({
@@ -19,6 +21,7 @@ export class EidService {
     if (eik.length !== 32 || ![20, 32].includes(size) || !Number.isSafeInteger(beaconSeconds)) {
       throw new Error('Expected a 32-byte EIK, integer clock and 20- or 32-byte EID');
     }
+
     const timestamp = Buffer.alloc(4);
     timestamp.writeUInt32BE((beaconSeconds & ~1023) >>> 0);
     const block = Buffer.concat([
@@ -34,8 +37,13 @@ export class EidService {
     const encrypted = Buffer.concat([cipher.update(block), cipher.final()]);
     const curve = size === 20 ? secp160r1 : p256.Point;
     const scalar = BigInt(`0x${encrypted.toString('hex')}`) % curve.CURVE().n;
-    if (scalar === 0n) throw new Error('Invalid zero EID scalar');
+
+    if (scalar === 0n) {
+      throw new Error('Invalid zero EID scalar');
+    }
+
     const x = curve.BASE.multiply(scalar).toAffine().x;
+
     return Buffer.from(x.toString(16).padStart(size * 2, '0'), 'hex');
   }
 }

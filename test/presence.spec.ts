@@ -1,8 +1,10 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { manager } from './helpers';
+
 import { PresenceService } from '../src/presence/presence.service';
+import { manager } from './helpers';
+
 let m: PresenceService;
 let directory: string;
 beforeEach(() => {
@@ -99,6 +101,7 @@ test.each([false, true])(
     m.tick(3601, 3601);
     let item = m.claim(3601, 3601)!;
     m.observe('a', 3602, -60);
+
     if (failed) {
       m.failed(item, 3603);
       expect(m.claim(3604, 3604)).toBeNull();
@@ -107,6 +110,7 @@ test.each([false, true])(
       item = m.claim(3633, 3633)!;
       expect(item.kind).toBe('absence');
     }
+
     m.delivered(item);
     expect(m.states.get('a')!.alert_sent).toBe(false);
     const recovery = m.claim(3634, 3634)!;

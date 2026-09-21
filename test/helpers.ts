@@ -1,8 +1,10 @@
 import { ConfigService } from '@nestjs/config';
+
 import { TrackerConfig } from '../src/config/config.service';
 import { Configuration, Settings } from '../src/config/configuration';
 import { SqliteService } from '../src/persistence/sqlite.service';
 import { PresenceService } from '../src/presence/presence.service';
+
 export const tags = [
   {
     id: 'a',
@@ -36,10 +38,12 @@ export function config(
     debugScan: false,
     ...overrides,
   };
+
   return new TrackerConfig(new ConfigService({ tracker: value }));
 }
 export function manager(settings: Partial<Settings> = {}, overrides: Partial<Configuration> = {}) {
   const cfg = config(settings, overrides),
     store = new SqliteService(cfg);
+
   return new PresenceService(store, cfg);
 }

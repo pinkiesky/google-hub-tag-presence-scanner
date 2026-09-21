@@ -1,11 +1,13 @@
-import { Test } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
 import request from 'supertest';
-import { WebModule, allowedClient } from '../src/web/web.module';
-import { PresenceService } from '../src/presence/presence.service';
+
 import { SqliteService } from '../src/persistence/sqlite.service';
+import { PresenceService } from '../src/presence/presence.service';
+import { allowedClient, WebModule } from '../src/web/web.module';
 import { WebViewService } from '../src/web/web-view.service';
 import { config, manager, tags } from './helpers';
+
 let app: INestApplication | undefined;
 let m: PresenceService;
 afterEach(async () => {
@@ -51,6 +53,7 @@ test('real HTTP returns current, escaped, server-rendered state without secrets 
   const response = await request(server).get('/').expect(200);
   expect(response.text).toContain('<!doctype html>');
   expect(response.text).toContain('</html>');
+
   for (const value of [
     '&lt;script&gt;Cat A&lt;/script&gt;',
     'Cat B',
@@ -59,8 +62,10 @@ test('real HTTP returns current, escaped, server-rendered state without secrets 
     '1970-01-01 00:18:31',
     '-60.0 dBm',
     'Never seen',
-  ])
+  ]) {
     expect(response.text).toContain(value);
+  }
+
   for (const forbidden of [
     '<script>',
     'fetch(',
@@ -71,8 +76,10 @@ test('real HTTP returns current, escaped, server-rendered state without secrets 
     cfg.value.token,
     cfg.value.chatId,
     ...cfg.tags.map((t) => t.eik.toString('hex')),
-  ])
+  ]) {
     expect(response.text).not.toContain(forbidden);
+  }
+
   expect(response.headers['cache-control']).toBe('no-store');
   m.observe('b', 1112, -40, 120);
   expect((await request(server).get('/')).text).toContain('-40.0 dBm');
@@ -83,8 +90,10 @@ test('real HTTP returns current, escaped, server-rendered state without secrets 
     .expect(200);
   const head = await request(server).head('/').expect(200);
   expect(head.text).toBeUndefined();
-  for (const path of ['/api/status', '/status', '/status.json', '/etc/passwd'])
+
+  for (const path of ['/api/status', '/status', '/status.json', '/etc/passwd']) {
     await request(server).get(path).expect(404);
+  }
 });
 test('RSSI display preserves Python ties-to-even rounding', () => {
   m = manager();

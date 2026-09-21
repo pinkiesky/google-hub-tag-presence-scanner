@@ -1,10 +1,13 @@
 import 'reflect-metadata';
+
 import { ConsoleLogger, INestApplication, Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+
 import { AppModule } from './app.module';
-import { ConfigurationError } from './config/configuration';
 import { TrackerConfig } from './config/config.service';
+import { ConfigurationError } from './config/configuration';
 import { LifecycleService } from './lifecycle.service';
+
 async function bootstrap(): Promise<void> {
   process.umask(0o077);
   const debugScan = process.argv.includes('--debug-scan');
@@ -23,6 +26,7 @@ async function bootstrap(): Promise<void> {
   const lifecycle = app.get(LifecycleService);
   lifecycle.stopApplication = () => app.close();
   app.enableShutdownHooks();
+
   try {
     if ('listen' in app) {
       await (app as INestApplication).listen(app.get(TrackerConfig).settings.port, '0.0.0.0');
@@ -31,6 +35,7 @@ async function bootstrap(): Promise<void> {
       server.headersTimeout = 10_000;
       server.setTimeout(3000);
     }
+
     new Logger('Bootstrap').log(
       `Application started; monitoring ${app.get(TrackerConfig).tags.length} tags${debugScan ? '' : '; SQLite opened'}`,
     );

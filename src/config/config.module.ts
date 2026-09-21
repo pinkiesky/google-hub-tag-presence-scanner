@@ -1,7 +1,9 @@
 import { Global, Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { loadConfiguration } from './configuration';
+
 import { TrackerConfig } from './config.service';
+import { loadConfiguration } from './configuration';
+
 @Global()
 @Module({
   imports: [

@@ -1,7 +1,10 @@
-import { Injectable } from '@nestjs/common';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { PresenceService, utc, wallTime, monotonicTime } from '../presence/presence.service';
+
+import { Injectable } from '@nestjs/common';
+
+import { monotonicTime, PresenceService, utc, wallTime } from '../presence/presence.service';
+
 export function escapeHtml(value: string): string {
   return value.replace(
     /[&<>"']/g,
@@ -16,6 +19,7 @@ export function formatRssi(average: number): string {
     magnitude % 1 === 0.25
       ? `${average < 0 ? '-' : ''}${Math.floor(magnitude)}.2`
       : average.toFixed(1);
+
   return `${formatted} dBm`;
 }
 export interface StatusPageViewModel {
@@ -29,8 +33,10 @@ export interface StatusPageViewModel {
     alertSent: string;
   }>;
 }
+
 function asset(path: string): string {
   const compiled = join(__dirname, '..', path);
+
   return readFileSync(existsSync(compiled) ? compiled : join(__dirname, '../..', path), 'utf8');
 }
 @Injectable()
@@ -43,6 +49,7 @@ export class WebViewService {
       generated: `${utc(now)} UTC`,
       tags: [...this.presence.states.values()].map((state) => {
         const average = this.presence.averageRssi(state.tag_id, mono);
+
         return {
           id: state.tag_id,
           name: state.name,
@@ -60,6 +67,7 @@ export class WebViewService {
       }),
     };
   }
+
   render(now = wallTime(), mono = monotonicTime()): string {
     const model = this.viewModel(now, mono);
     const rows = model.tags
@@ -72,6 +80,7 @@ export class WebViewService {
           '</tr>',
       )
       .join('');
+
     return this.template
       .replace('{{generated}}', () => escapeHtml(model.generated))
       .replace('{{rows}}', () => rows);

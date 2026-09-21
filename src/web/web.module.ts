@@ -1,12 +1,19 @@
-import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { isIPv4 } from 'node:net';
-import { Request, Response, NextFunction } from 'express';
+
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { NextFunction, Request, Response } from 'express';
+
 import { PresenceModule } from '../presence/presence.module';
 import { WebController } from './web.controller';
 import { WebViewService } from './web-view.service';
+
 export function allowedClient(address: string): boolean {
-  if (!isIPv4(address)) return false;
+  if (!isIPv4(address)) {
+    return false;
+  }
+
   const [a, b] = address.split('.').map(Number);
+
   return (
     a === 127 ||
     a === 10 ||
@@ -23,8 +30,10 @@ export class WebModule implements NestModule {
         // Use the socket peer, never proxy-controlled forwarded headers.
         if (!allowedClient(req.socket.remoteAddress ?? '')) {
           res.status(403).end();
+
           return;
         }
+
         res.setHeader('Cache-Control', 'no-store');
         res.setHeader('X-Content-Type-Options', 'nosniff');
         res.setHeader(
