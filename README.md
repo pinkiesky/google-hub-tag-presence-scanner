@@ -1,265 +1,282 @@
 # Cat tracker
 
-A single Python 3.11+ process monitors local Google Find Hub BLE advertisements and
-sends Telegram messages after an absence longer than one hour, then on recovery.
-Two or more tags share one scanner. Presence depends on a matching rotating EID;
-RSSI is diagnostic only. No Google login, location API, or Internet connection is
-needed for tracking.
+Node.js 24 / TypeScript / NestJS service for Raspberry Pi OS ARM64. One BLE scanner
+identifies Google Find Hub tags cryptographically, records presence in SQLite,
+sends Telegram absence/recovery notifications, and serves a read-only LAN page at
+`http://raspberrypi.local:15432/`. Internet is needed only for Telegram.
+
+## Build and test
+
+```sh
+npm ci
+npm run build
+npm test
+npm run lint
+npm run start:prod
+```
+
+Use Node.js 24 (check `node --version`). Native modules require Python 3,
+`build-essential`, `libbluetooth-dev`, `libudev-dev`, `libusb-1.0-0-dev`, and
+`pkg-config`. `package-lock.json` pins dependencies. The `allowScripts` entries in
+`package.json` permit the native builds on recent npm versions. Build/install on
+the Pi itself; do not copy x86 `node_modules` to ARM64. Production runs compiled
+`node dist/main.js`, without ts-node. `npm run start:dev` watches TypeScript;
+`npm run test:watch` watches tests. Templates/CSS are copied into `dist` on build.
+
+Tests use synthetic secrets, a Python-generated SQLite dump, mocked Bluetooth and
+Telegram, and a real localhost HTTP listener. No test requires real keys or sends
+Telegram messages. A restricted sandbox must permit local sockets for HTTP tests.
+
+## Configuration
+
+Existing `/etc/cat-tracker/config.toml` works unchanged. `--config PATH` selects a
+different file. Alternatively set `TAG_CONFIG_PATH` to a TOML file or JSON file
+like `tags.example.json`. Relative secret paths resolve against the config file.
+JSON may be `{ "tags": [...] }` or a tag array; a `service` object accepts the same
+snake_case fields as TOML. Environment variables override service settings.
+
+| Variable | Default |
+| --- | --- |
+| `TAG_CONFIG_PATH` | `/etc/cat-tracker/config.toml` |
+| `DATABASE_PATH` | `/var/lib/cat-tracker/presence.sqlite3` |
+| `BLUETOOTH_ADAPTER` | `0` (`hci0` and `hci1` also accepted) |
+| `PORT` | `15432` |
+| `ALERT_AFTER_SECONDS` | `3600` |
+| `MISSING_AFTER_SECONDS` | `60` |
+| `STARTUP_GRACE_SECONDS` | `120` |
+| `WATCHDOG_INTERVAL_SECONDS` | `30` |
+| `DRIFT_WINDOWS` | `16` (1–32) |
+| `SCANNER_CYCLE_SECONDS` | `300` |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | required, except `--debug-scan` |
+
+`@nestjs/config` loads/validates settings. Environment files are loaded by systemd;
+foreground runs use exported environment variables. The application does not
+silently load a working-directory `.env`. Keep EIKs in separate secret JSON files:
+`version` (1), `name`, `pair_date` (integer Unix UTC seconds), `eik_hex` (64 hex
+characters). Manufacturer/model metadata remains ignored. Invalid secrets disable
+only that tag, as Python did; no usable tags, duplicate IDs, or invalid global
+settings fail startup. Secret contents and paths are never logged or rendered.
+Keep IDs stable: changing an ID starts a new presence timer.
 
 ## Raspberry Pi installation
 
-The four scripts in `deploy/` run locally and accept your Pi's SSH destination.
-They require SSH access, `rsync` on both machines, and noninteractive sudo
-(`sudo -n`) for the remote deployment user. They also work with an SSH config
-alias (configure a custom port/key in `~/.ssh/config`). Paths are fixed to
-`/opt/cat-tracker`, `/etc/cat-tracker`, and `/var/lib/cat-tracker`.
-
-For first installation:
-
-```sh
-# If rsync is not already installed on the Pi:
-ssh -t pi@raspberrypi.local 'sudo apt-get update && sudo apt-get install -y rsync'
-./deploy/install_remote pi@raspberrypi.local
-./deploy/setup_infra_remote pi@raspberrypi.local
-```
-
-`install_remote` copies only application source, package metadata, documentation,
-configuration examples and deployment files into `/opt/cat-tracker`.
-`setup_infra_remote` installs OS/Python dependencies, creates the dedicated user,
-installs the BlueZ D-Bus policy and systemd unit, powers on Bluetooth, and enables
-the tracker at boot. It creates configuration templates only when missing.
-Python 3.11+ is required; the script stops with an explanation on older versions.
-
-Before starting, edit `/etc/cat-tracker/config.toml` and
-`/etc/cat-tracker/telegram.env`, then install the two secret JSON files using the
-commands below. The setup script does not start the tracker with placeholder
-credentials. Once configured:
-
-```sh
-./deploy/restart_remote pi@raspberrypi.local
-```
-
-For later updates:
-
-```sh
-./deploy/update_remote pi@raspberrypi.local
-./deploy/restart_remote pi@raspberrypi.local
-```
-
-`update_remote` copies current application files, removes stale source files,
-installs the Python package and refreshes the systemd/D-Bus definitions. It does
-not restart the process; run `restart_remote` immediately afterward. These are
-simple in-place updates, not atomic deployments. All scripts stop on errors.
-Existing credentials, configuration and presence history are preserved. Local
-virtual environments, databases and secret files are not uploaded. Keep secrets
-outside `src/cat_tracker`, which is copied as application source.
-
-The scripts can be run from any working directory. No command is run remotely
-until you invoke a script. For manual installation, use the steps below instead.
-
-Use Raspberry Pi OS with Python 3.11 or newer, BlueZ 5.55+, and a working Bluetooth
-adapter. Check the installed Python version first: older OS releases may provide
-Python 3.10 or earlier; upgrade the OS or install a separately maintained Python 3.11+ and
-use that interpreter to create the venv. Do not replace the OS Python.
+Use Raspberry Pi OS 64-bit on Pi 4, with Node.js 24 LTS installed at `/usr/bin/node`
+and npm available to sudo. The setup script checks this; it does not replace the
+OS runtime. If Node lives elsewhere, adjust the unit's `ExecStart` accordingly.
 
 ```sh
 sudo apt update
-sudo apt install -y python3 python3-venv python3-dev build-essential bluez libbluetooth-dev sqlite3
-python3 --version
+sudo apt install -y python3 build-essential bluez libbluetooth-dev libudev-dev \
+  libusb-1.0-0-dev pkg-config libcap2-bin sqlite3 rsync
 sudo systemctl enable --now bluetooth
 sudo bluetoothctl power on
-sudo groupadd --system --force bluetooth
-sudo useradd --system --user-group --home-dir /var/lib/cat-tracker --no-create-home --shell /usr/sbin/nologin cat-tracker
-sudo usermod -aG bluetooth cat-tracker
-sudo install -d -m 0755 /opt/cat-tracker
-sudo install -d -o root -g cat-tracker -m 0750 /etc/cat-tracker
 ```
 
-From this checkout (the copy commands intentionally exclude local secrets):
+From this checkout, the existing remote scripts retain their interface. They
+require local/remote rsync, SSH, and noninteractive sudo on the Pi:
 
 ```sh
-sudo cp pyproject.toml README.md /opt/cat-tracker/
-sudo cp -r src /opt/cat-tracker/
-sudo python3 -m venv /opt/cat-tracker/.venv
-sudo /opt/cat-tracker/.venv/bin/python -m pip install /opt/cat-tracker
-sudo install -o root -g cat-tracker -m 0640 config.example.toml /etc/cat-tracker/config.toml
-sudo install -o root -g root -m 0600 .env.example /etc/cat-tracker/telegram.env
-sudoedit /etc/cat-tracker/config.toml
-sudoedit /etc/cat-tracker/telegram.env
+./deploy/install_remote rglr@192.168.0.123
+./deploy/setup_infra_remote rglr@192.168.0.123
 ```
 
-Create a bot with Telegram's BotFather, obtain your destination chat ID, and initiate
-a chat with the bot (or add it to the target group). Set `TELEGRAM_BOT_TOKEN` and
-`TELEGRAM_CHAT_ID` in `telegram.env`. No polling/webhooks run in this service.
-Environment files are loaded by systemd, not by Python; for foreground execution,
-export the two variables in your shell. Never commit them or paste them into logs.
-
-Install your existing secret files:
+Setup creates the existing `cat-tracker` service user, private state directory,
+config templates only if missing, installs dependencies, builds/tests, and
+installs/enables the unit. It does not start the tracker. Install secrets and edit
+configuration on the Pi before starting:
 
 ```sh
 sudo install -o root -g cat-tracker -m 0640 /path/to/cat-a.json /etc/cat-tracker/cat-a.json
 sudo install -o root -g cat-tracker -m 0640 /path/to/cat-b.json /etc/cat-tracker/cat-b.json
-sudo install -m 0644 deploy/cat-tracker.service /etc/systemd/system/cat-tracker.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now cat-tracker
-sudo systemctl status cat-tracker
+sudoedit /etc/cat-tracker/config.toml
+sudoedit /etc/cat-tracker/telegram.env
+sudo chmod 0750 /etc/cat-tracker
+sudo chmod 0600 /etc/cat-tracker/telegram.env
+sudo systemctl start cat-tracker
+sudo systemctl status cat-tracker --no-pager
 sudo journalctl -u cat-tracker -f
 sudo journalctl -u cat-tracker --since today
 ```
 
-A secret has `version: 1`, a nonempty `name`, integer UTC Unix `pair_date`, and
-`eik_hex` with exactly 64 hexadecimal characters. Manufacturer/model metadata is
-ignored. Keys never belong in the main TOML. IDs must remain stable across restarts;
-changing an ID starts a new timer. Restart after changing config or secrets.
-Unreadable/invalid tag secrets disable just that tag with an ERROR; no valid tags
-is fatal. Duplicate keys are rejected to avoid assigning observations arbitrarily.
+For updates use `deploy/update_remote user@host`, then `deploy/restart_remote
+user@host`. Scripts are in-place deployments, not atomic releases. Use the backup
+and rollback procedure below for the first migration. Existing Python source and
+venv are retained. No local secret files or databases are copied by these scripts.
 
-## Bluetooth permissions and diagnostics
+The unit preserves `/opt/cat-tracker`, `/etc/cat-tracker/telegram.env`,
+`/var/lib/cat-tracker`, the service user, private directory permissions, and restart
+policy. It starts after Bluetooth/network/time-sync targets, restarts after 5
+seconds, and uses Nest shutdown hooks on SIGTERM/SIGINT.
 
-Bleak uses the system D-Bus BlueZ service, so raw HCI sockets and root are not
-required. The dedicated user needs permission to send to `org.bluez`. Raspberry Pi
-OS policy commonly grants this to `bluetooth`; verify on the target OS:
+## Bluetooth access and diagnostics
+
+Noble uses the Linux raw HCI backend with explicit `deviceId`, unlike Python's
+BlueZ D-Bus backend. The unit grants **only `CAP_NET_RAW`** through systemd's
+`AmbientCapabilities` and `CapabilityBoundingSet`, and permits `AF_BLUETOOTH` and
+`AF_NETLINK`. The service does not run as root. No capability is added to the shared
+Node binary. The old D-Bus policy may remain for Python rollback but is unnecessary
+for Node. Raw mode requires the selected adapter to be powered on. `hci1` is
+selected by `BLUETOOTH_ADAPTER=1` in the environment file.
+
+Stop the normal service before debug scanning, then run a transient unit with the
+same user/capability (this does not open SQLite, HTTP, or Telegram):
 
 ```sh
-sudo -u cat-tracker /opt/cat-tracker/.venv/bin/cat-tracker --config /etc/cat-tracker/config.toml --debug-scan
+sudo systemctl stop cat-tracker
+sudo systemd-run --unit=cat-tracker-debug --collect --wait --pty \
+  --property=User=cat-tracker --property=Group=cat-tracker \
+  --property=AmbientCapabilities=CAP_NET_RAW \
+  --property=CapabilityBoundingSet=CAP_NET_RAW \
+  /usr/bin/node /opt/cat-tracker/dist/main.js --debug-scan
+# Ctrl-C ends the scan. Restore the service afterwards:
+sudo systemctl start cat-tracker
 ```
 
-This command prints matched tag IDs and RSSI, does not open the database, and does
-not require Telegram credentials. Stop the normal service during this hardware
-check to avoid competing discovery clients. Exit with Ctrl-C. `--debug` also shows
-matched observations in normal service mode. Raw advertisements and EIKs
-are never logged. Every 30 seconds, INFO logs summarize all received advertisements,
-non-FEAA traffic (`other`), invalid FEAA frames, unmatched EIDs and matched tags with
-latest RSSI. Scanning has no service UUID filter: FEAA service data can be present
-without FEAA in the advertised service UUID list. Filtering happens in our parser.
+Debug output reports matched IDs and RSSI. Normal logs summarize counts every 30
+seconds; `--debug` enables individual matched observations. Neither raw packets
+nor EIKs are logged. Scanning has no advertised UUID filter and allows duplicates;
+FEAA may exist only in service data. Noble is configured to report advertisements
+without waiting for scan responses. Extended advertisements are auto-detected by
+noble; 32-byte EID reception requires a capable adapter. Parser/crypto support both
+20- and 32-byte EIDs regardless of radio support.
 
-If D-Bus denies access, install the included policy for this user:
+The scanner cycles every five minutes, retries short failures after 5/10/20/40
+seconds, and exits after five failures. Failed cleanup is fatal, avoiding
+concurrent scanner ownership. A radio returning no packets cannot always be
+distinguished from absent tags; check scan summaries, rfkill, `bluetoothctl show`,
+and adapter permissions. Missing means not detected, not proof that a cat left.
+
+## Migrating from Python and preserving SQLite
+
+1. Run the tests and retain the original installation for rollback. Python remains
+   in `src/cat_tracker`, its tests in `tests`, and its instructions in
+   [docs/PYTHON.md](docs/PYTHON.md). `deploy/cat-tracker-python.service` retains the
+   original unit. Do not delete these before hardware acceptance.
+2. Back up before updating the unit. On the Pi:
+
+   ```sh
+   sudo install -d -m 0700 /var/backups/cat-tracker
+   sudo cp /etc/systemd/system/cat-tracker.service /var/backups/cat-tracker/python-before-node.service
+   sudo tar -C /opt -czf /var/backups/cat-tracker/python-before-node.tar.gz cat-tracker
+   sudo sqlite3 /var/lib/cat-tracker/presence.sqlite3 \
+     ".backup '/var/backups/cat-tracker/presence-before-node.sqlite3'"
+   ```
+
+   Adapt the database path if your config differs. The online SQLite backup
+   includes committed WAL data; do not copy a live database without its WAL.
+3. Install/build/test Node using the scripts above. Preserve the config file,
+   secret files, environment file, IDs, and database path.
+4. Stop Python, start Node, and inspect the page/logs:
+
+   ```sh
+   sudo systemctl stop cat-tracker
+   sudo systemctl daemon-reload
+   sudo systemctl start cat-tracker
+   sudo journalctl -u cat-tracker -n 60 --no-pager
+   curl http://127.0.0.1:15432/
+   ```
+
+   Never run two scanners simultaneously. Both implementations acquire the same
+   `DATABASE_PATH.lock` flock, protecting state/outbox ownership as well.
+5. Confirm both real IDs and RSSI in logs, fresh page values after browser refresh,
+   grace period, one disappearance/recovery cycle, and restart continuity. Allow
+   more than one hour plus one watchdog interval for the default alert test.
+   For a supervised shorter test change `ALERT_AFTER_SECONDS` and
+   `MISSING_AFTER_SECONDS` together, then restore defaults. Do not manufacture
+   absence by editing the production database.
+
+No schema conversion is needed: `states`, `outbox`, Unix-second timestamps,
+`created_at`, `episode`, retries, and unique constraints are preserved. SQLite
+uses WAL and FULL synchronization. Loading does not reset timers or confirmations.
+Disabled tags' pending messages remain stored and are not delivered until their
+IDs are enabled again. Only matched observations update state; raw packets are
+not stored. RSSI samples remain in memory for five minutes and reset on restart.
+
+Rollback without discarding observations recorded by Node:
 
 ```sh
-sudo install -m 0644 deploy/90-cat-tracker-bluetooth.conf /etc/dbus-1/system.d/90-cat-tracker-bluetooth.conf
-sudo systemctl reload dbus
-sudo systemctl restart cat-tracker
+sudo systemctl stop cat-tracker
+sudo cp /var/backups/cat-tracker/python-before-node.service /etc/systemd/system/cat-tracker.service
+sudo systemctl daemon-reload
+sudo systemctl start cat-tracker
 ```
 
-This allows the user to call BlueZ; it is not a per-adapter access restriction.
-Check `bluetoothctl show`, rfkill state, adapter selection (`hci0` by default), and
-journald if discovery fails. 32-byte EIDs require extended advertisement support
-in the adapter/BlueZ stack. The service retries scanner errors with bounded backoff
-and exits after five consecutive short failures. Discovery is restarted every
-five minutes to recover silent backend disconnects, with only one scanner active
-at a time. This introduces a short scan gap. A dead radio cannot reliably be
-distinguished from both tags being absent: missing messages mean **not detected**,
-not proof that a cat left home. Monitor BLE errors in journald.
+The retained Python venv can read the same database, including new Node state and
+outbox entries. Do not restore the old database unless deliberately rolling back
+presence history too. The installation archive is available if source recovery
+is needed.
 
-## Clock and EID compatibility
+## Behavior and parity
 
-The implementation follows Google's [FHN accessory specification](https://developers.google.com/nearby/fast-pair/specifications/extensions/fmdn):
-AES-256-ECB derives a scalar for secp160r1 or secp256r1, and its public x-coordinate
-is the 20- or 32-byte EID. Rotation is 1024 seconds. Both frame types and optional
-hashed flags are parsed. Expected identifiers are cached, refreshed as each tag's
-rotation window changes, with 16 neighboring windows on either side by default
-(about ±4.5 hours), matching the supplied working prototype.
-
-**Clock assumption:** `beacon_seconds = UTC_now - pair_date + clock_offset_seconds`.
-This matches the supplied working prototype's clock calculation. The EIK alone
-does not determine a beacon's clock origin. If pairing did not occur at clock zero,
-set the per-tag signed `clock_offset_seconds` to the known clock at `pair_date`.
-Existing configurations should set `drift_windows = 16` for the same tolerance.
-Adjust `drift_windows` (1–32) for drift; a large clock reset needs a corrected
-clock offset. This service neither pairs nor changes tags. No API fallback exists.
-
-Keep the Pi clock synchronized with NTP. UTC wall timestamps persist across
-reboots; startup grace and scanner scheduling use monotonic time. Large wall-clock
-corrections can advance or delay absence alerts until the clock is corrected.
-`time-sync.target` orders startup but does not itself guarantee a successful NTP
-sync on every distribution. Verify time before commissioning the service.
-A matching broadcast is evidence of local reception, not replay-proof ranging.
-
-## State and delivery behavior
-
-Each tag stores `last_seen`, latest RSSI, alert status, absence start and an episode
-number in SQLite. After 60 seconds without observations it is marked missing;
-a notification is queued only once the absence is **strictly greater** than the
-configured timeout. Checks run every 30 seconds, so delivery normally occurs
-within one watchdog interval after the threshold. A never-seen tag's timer starts
-at its first service start and persists across restarts; its alert says "never".
-The two-minute startup grace suppresses delivery while fresh observations arrive.
-
-All state changes and SQLite transactions run synchronously on one asyncio event
-loop with no awaits inside transactions. BLE callbacks never await Telegram.
-A single notification worker performs bounded HTTP requests while scanning and
-the watchdog continue. An outbox transaction couples state transitions with
-pending notifications. Per-tag delivery order is preserved; a failed tag's
-message does not prevent the other tag being processed. A file lock prevents two
-service processes sharing the same database.
-
-Success requires an HTTP success and Telegram `ok: true`; only then is the alert
-marked sent. Retries back off from 30 seconds to 15 minutes and honor Telegram's
-`retry_after`. Pending recoveries survive restarts. If a tag returns before an
-absence message begins sending, that stale alert is canceled. If the tag returns
-during an in-flight request, its recovery is queued behind that absence; delayed
-messages may therefore describe an already-completed absence. Episode IDs stop
-late acknowledgments from marking a newer absence as alerted.
-
-Telegram `sendMessage` has no idempotency key. If Telegram accepts a message but
-the response is lost, or the process dies before recording success, retrying can
-produce a duplicate. Exactly-once external delivery is impossible in this case;
-normal confirmed deliveries and recoveries are deduplicated locally. No repeated
-alerts are generated for a continuously missing tag after confirmed delivery.
-
-SQLite uses WAL and FULL synchronization. Database errors fail the service rather
-than silently losing presence state. The database stores names and timestamps,
-not EIKs or Telegram credentials. The systemd state directory is private. Back up
-with SQLite's online backup command, or stop the service before copying the
-DB/WAL together. Do not delete the database on restart: doing so resets timers.
-Disk corruption/full-disk errors require operator repair; the service does not
-silently recreate a corrupt database. Outbox rows for disabled/removed tags stay
-stored but are not delivered until those IDs are enabled again.
-
-## Development and tests
+The EID algorithm is ported from Python, not reconstructed from protocol prose:
+32-byte AES-256-ECB block, rotation every 1024 seconds, 32-bit clock wrap, scalar
+reduction, secp160r1 / P-256 public x-coordinate. Clock is
+`trunc(now - pair_date + clock_offset_seconds)`; each tag has ±16 cached windows by
+default. Ambiguous EIDs are rejected. `@noble/curves` performs curve arithmetic and
+`node:crypto` performs AES. Regenerate the synthetic reference fixtures with:
 
 ```sh
-python3 -m venv .venv
-.venv/bin/python -m pip install -e '.[dev]'
+.venv/bin/python scripts/generate-vectors.py
 .venv/bin/pytest
-.venv/bin/ruff check src tests
-.venv/bin/mypy src
-.venv/bin/cat-tracker --config config.example.toml --debug-scan
+npm test
 ```
 
-Tests use synthetic keys, mock HTTP, temporary SQLite files and no BLE hardware.
-They cover independent cryptographic cross-checks, parsing, cache/drift behavior,
-thresholds, independent tags, retry/recovery cycles, restarts, startup grace, and
-observations arriving during notification delivery. Before production, confirm
-matches from both real tags using debug scan, then test disappearance/recovery
-with a short timeout (and a shorter `missing_after_seconds`) before restoring
-3600 seconds. Real Pi radio and Telegram delivery require commissioning on your
-hardware with your credentials.
+Missing begins strictly **after 60 seconds**, and an alert is queued strictly
+**after 3600 seconds**, preserving Python's boundary behavior. Both monotonic
+startup grace and watchdog cadence are retained. Presence is never RSSI-gated.
+The durable outbox preserves per-tag order; a failed tag does not block another.
+Delivery requires HTTP success and Telegram `ok: true`. Retries start at 30 seconds
+and cap at 15 minutes, honoring valid Telegram `retry_after`. Unsent stale absence
+messages are canceled on return; a return during an in-flight send queues recovery
+behind that send. Episode numbers protect new state from late acknowledgments.
+Recovery confirmation is durable even though current state resets on observation,
+as in Python. Lost Telegram responses can still cause duplicate external delivery;
+Telegram has no sendMessage idempotency key.
 
-References: [Bleak Linux backend](https://bleak.readthedocs.io/en/latest/backends/linux.html),
-[Telegram Bot API](https://core.telegram.org/bots/api#sendmessage).
+The page preserves Python's table/CSS, `Never seen` / `Present` / `Missing` labels,
+and separate `Alert sent` column. It serves `/`, `/index.html`, HEAD, and CSS, with
+LAN-only IPv4 peer checks, no-store and CSP headers. There is no status API,
+browser JavaScript, polling, automatic refresh, or frontend framework. Public and
+IPv6 peers are rejected; forwarded headers are ignored.
 
-## LAN status page
+Intentional differences: HTML is rendered from current memory per request rather
+than publishing 30-second snapshots (requested); CSS is a static file; port is
+configurable with its old default; forbidden peers receive HTTP 403 rather than
+an immediate socket close; native HCI replaces D-Bus; HTTP uses fetch's bounded
+20-second total timeout rather than httpx's additional connect/read timeouts.
+Nest shutdown protects against noble's immediate SIGINT exit behavior.
 
-In normal service mode, open `http://<pi-lan-ip>:15432/` (for this Pi,
-`http://192.168.0.123:15432/`). The port is fixed at **15432**. No nginx or extra
-Python dependency is needed. Debug scan mode does not start the page.
+Reference APIs: [noble adapter/capability configuration](https://github.com/stoprocent/noble#multiple-adapters-linux-specific),
+[noble custom curves](https://github.com/paulmillr/noble-curves#weierstrass-custom-weierstrass-curve--ecdsa).
 
-The page shows each tag's status, last seen in UTC, arithmetic mean RSSI over the
-last five minutes, and whether Telegram confirmed its current absence alert.
-RSSI samples are held in memory and refill after restart; no recent samples show
-`—`. HTML snapshots update every 30 seconds. Refresh the browser to load the
-latest snapshot; there is no JavaScript or automatic refresh. Check the generated
-timestamp when assessing freshness.
+## Commissioning tools
 
-The HTTP listener binds to IPv4 interfaces and accepts only loopback, RFC1918
-private addresses and IPv4 link-local peers. Other client addresses are rejected;
-forwarded headers do not grant access. It serves only `/` and `/index.html`, with
-no file browsing, API, or write actions. Requests read an immutable HTML snapshot
-and never access SQLite or the mutable presence manager. The web thread stops
-with the main service. A port conflict fails startup and is logged by the service.
+Run these on the Pi as `cat-tracker` after building. `compare-python.cjs` uses the
+retained Python venv and reports only aggregate results; keys never leave the Pi.
 
-This is an unauthenticated page for a trusted LAN. Do not port-forward it, expose
-it through a public reverse proxy, or tunnel public traffic to it: a local proxy
-can appear to be a permitted private peer. If the Pi has a firewall, allow TCP
-15432 only from your intended LAN subnet. No firewall rules are changed by setup.
+```sh
+sudo -u cat-tracker node /opt/cat-tracker/scripts/compare-python.cjs /opt/cat-tracker/.venv/bin/python
+```
+
+For a real advertisement comparison, stop the normal service, run
+`capture-python.py OUTPUT 30` with the Python venv as `cat-tracker`, then run
+`node scripts/replay-advertisements.cjs OUTPUT` from `/opt/cat-tracker` with the
+same permissions. Restart the normal service even if the check fails. The capture
+contains rotating EIDs, timestamps and RSSI, never EIKs; keep it private. The replay
+checks EID identity at the original capture time. Native advertisement extraction
+is separately validated by the running Node scanner.
+
+`telegram-probe.cjs` is an **opt-in live test**: it sends two clearly labeled
+synthetic absence/recovery messages to the configured Telegram chat. It uses an
+in-memory database and does not alter real tag state or scan BLE. Run only when
+test messages are wanted:
+
+```sh
+sudo systemd-run --unit=cat-tracker-telegram-probe --collect --wait --pipe \
+  --property=User=cat-tracker --property=Group=cat-tracker \
+  --property=EnvironmentFile=/etc/cat-tracker/telegram.env \
+  /usr/bin/node /opt/cat-tracker/scripts/telegram-probe.cjs
+```
+
+The package override for `multer` keeps Nest 11's transitive dependency on the
+patched 2.3.x-or-newer compatible release. This service exposes no upload routes.

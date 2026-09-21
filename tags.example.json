@@ -1,0 +1,6 @@
+{
+  "tags": [
+    { "id": "cat-a", "secret_file": "/etc/cat-tracker/cat-a.json", "clock_offset_seconds": 0 },
+    { "id": "cat-b", "secret_file": "/etc/cat-tracker/cat-b.json", "clock_offset_seconds": 0 }
+  ]
+}

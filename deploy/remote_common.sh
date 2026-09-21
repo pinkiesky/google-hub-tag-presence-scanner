@@ -21,18 +21,23 @@ remote_root() {
 copy_project() {
     remote_root <<'REMOTE'
 command -v rsync >/dev/null || { echo 'Install rsync on the remote host first.' >&2; exit 1; }
-install -d -m 0755 /opt/cat-tracker/src/cat_tracker /opt/cat-tracker/deploy
+install -d -m 0755 /opt/cat-tracker/src /opt/cat-tracker/deploy
 REMOTE
     rsync -az --rsync-path='sudo -n rsync' --chmod=D755,F644 \
-        "$PROJECT_DIR/pyproject.toml" "$PROJECT_DIR/README.md" \
-        "$PROJECT_DIR/config.example.toml" "$PROJECT_DIR/.env.example" \
+        "$PROJECT_DIR/package.json" "$PROJECT_DIR/package-lock.json" \
+        "$PROJECT_DIR/tsconfig.json" "$PROJECT_DIR/tsconfig.build.json" "$PROJECT_DIR/tsconfig.test.json" \
+        "$PROJECT_DIR/nest-cli.json" "$PROJECT_DIR/jest.config.cjs" "$PROJECT_DIR/eslint.config.mjs" \
+        "$PROJECT_DIR/README.md" "$PROJECT_DIR/config.example.toml" "$PROJECT_DIR/tags.example.json" "$PROJECT_DIR/.env.example" \
         "$REMOTE:/opt/cat-tracker/"
     rsync -az --rsync-path='sudo -n rsync' --chmod=D755,F644 \
-        "$PROJECT_DIR/deploy/cat-tracker.service" \
-        "$PROJECT_DIR/deploy/90-cat-tracker-bluetooth.conf" \
+        "$PROJECT_DIR/deploy/cat-tracker.service" "$PROJECT_DIR/deploy/cat-tracker-python.service" \
         "$REMOTE:/opt/cat-tracker/deploy/"
-    # Delete stale source files only; never touch the venv, configuration or database.
-    rsync -az --delete --rsync-path='sudo -n rsync' --chmod=D755,F644 \
-        --exclude='__pycache__/' --exclude='*.pyc' \
-        "$PROJECT_DIR/src/cat_tracker/" "$REMOTE:/opt/cat-tracker/src/cat_tracker/"
+    # Preserve the Python checkout/venv for rollback; never copy credentials/state.
+    rsync -az --rsync-path='sudo -n rsync' --chmod=D755,F644 \
+        --exclude='cat_tracker/' --exclude='*.egg-info/' --exclude='__pycache__/' \
+        "$PROJECT_DIR/src/" "$REMOTE:/opt/cat-tracker/src/"
+    for directory in views public scripts test docs; do
+        rsync -az --delete --rsync-path='sudo -n rsync' --chmod=D755,F644 \
+            "$PROJECT_DIR/$directory/" "$REMOTE:/opt/cat-tracker/$directory/"
+    done
 }

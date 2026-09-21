@@ -8,3 +8,11 @@ __pycache__/
 .env
 *.sqlite*
 secrets/
+node_modules/
+dist/
+coverage/
+*.db
+*.db-shm
+*.db-wal
+*.lock
+!package-lock.json

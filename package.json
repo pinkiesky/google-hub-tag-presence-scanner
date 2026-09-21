@@ -1,0 +1,60 @@
+{
+  "name": "cat-tracker",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Local Find Hub BLE presence monitoring with NestJS",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "build": "nest build && node scripts/copy-assets.cjs",
+    "start": "node dist/main.js",
+    "start:dev": "nest start --watch",
+    "start:prod": "node dist/main.js",
+    "test": "jest --runInBand",
+    "test:watch": "jest --watch",
+    "lint": "tsc --noEmit -p tsconfig.json && eslint src test"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.1.0",
+    "@nestjs/core": "^11.1.0",
+    "@nestjs/platform-express": "^11.1.0",
+    "@nestjs/config": "^4.0.0",
+    "@noble/curves": "^2.0.0",
+    "@stoprocent/noble": "^2.3.0",
+    "better-sqlite3": "^12.0.0",
+    "fs-ext": "^2.1.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "smol-toml": "^1.4.0"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.0",
+    "@nestjs/testing": "^11.1.0",
+    "@types/better-sqlite3": "^7.6.0",
+    "@types/fs-ext": "^2.0.3",
+    "@types/express": "^5.0.0",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^24.0.0",
+    "@types/supertest": "^6.0.0",
+    "jest": "^30.0.0",
+    "ts-jest": "^29.4.0",
+    "supertest": "^7.1.0",
+    "typescript": "^5.9.0",
+    "eslint": "^9.0.0",
+    "typescript-eslint": "^8.0.0"
+  },
+  "allowScripts": {
+    "@stoprocent/noble@2.8.0": true,
+    "better-sqlite3@12.11.1": true,
+    "fs-ext@2.1.1": true,
+    "@stoprocent/bluetooth-hci-socket@2.3.0": true,
+    "usb@2.18.0": true,
+    "@parcel/watcher@2.6.0": true,
+    "unrs-resolver@1.12.2": true,
+    "@serialport/bindings-cpp@12.0.1": true
+  },
+  "overrides": {
+    "multer": "^2.3.0"
+  }
+}
