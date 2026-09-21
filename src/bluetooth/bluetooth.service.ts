@@ -15,6 +15,8 @@ import { LifecycleService } from '../lifecycle.service';
 import { monotonicTime, PresenceService, wallTime } from '../presence/presence.service';
 import { Advertisement } from './advertisement.types';
 
+const REPORT_ONCE_PER_SEC = 180;
+
 export const NOBLE_FACTORY = Symbol('NOBLE_FACTORY');
 export type NobleFactory = (adapter: number) => Noble;
 export function createNoble(adapter: number): Noble {
@@ -220,7 +222,7 @@ export class BluetoothService implements OnApplicationBootstrap, BeforeApplicati
         // No advertised UUID filter: FEAA may appear only in service data.
         await bounded(noble.startScanningAsync([], true), 30_000, this.abort.signal);
         this.logger.log('BLE scanner started');
-        let nextReport = monotonicTime() + 30;
+        let nextReport = monotonicTime() + REPORT_ONCE_PER_SEC;
 
         while (monotonicTime() - started < this.config.settings.scannerCycleSeconds) {
           if (this.scanFailed) {
@@ -231,7 +233,7 @@ export class BluetoothService implements OnApplicationBootstrap, BeforeApplicati
 
           if (monotonicTime() >= nextReport) {
             this.report();
-            nextReport = monotonicTime() + 30;
+            nextReport = monotonicTime() + REPORT_ONCE_PER_SEC;
           }
 
           await this.pause(1000);

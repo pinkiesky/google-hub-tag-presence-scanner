@@ -5,7 +5,7 @@ import { weierstrass } from '@noble/curves/abstract/weierstrass.js';
 import { p256 } from '@noble/curves/nist.js';
 
 export const ROTATION_SECONDS = 1024;
-// SEC2 secp160r1 parameters from the working Python ecdsa curve.
+// SEC2 secp160r1 curve parameters.
 const secp160r1 = weierstrass({
   p: 0xffffffffffffffffffffffffffffffff7fffffffn,
   n: 0x0100000000000000000001f4c8f927aed3ca752257n,

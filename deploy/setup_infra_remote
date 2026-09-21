@@ -17,8 +17,8 @@ fi
 usermod -aG bluetooth cat-tracker
 install -d -o root -g cat-tracker -m 0750 /etc/cat-tracker
 install -d -o cat-tracker -g cat-tracker -m 0700 /var/lib/cat-tracker
-if [[ ! -e /etc/cat-tracker/config.toml ]]; then
-    install -o root -g cat-tracker -m 0640 /opt/cat-tracker/config.example.toml /etc/cat-tracker/config.toml
+if [[ ! -e /etc/cat-tracker/config.json ]]; then
+    install -o root -g cat-tracker -m 0640 /opt/cat-tracker/config.example.json /etc/cat-tracker/config.json
 fi
 if [[ ! -e /etc/cat-tracker/telegram.env ]]; then
     install -o root -g root -m 0600 /opt/cat-tracker/.env.example /etc/cat-tracker/telegram.env

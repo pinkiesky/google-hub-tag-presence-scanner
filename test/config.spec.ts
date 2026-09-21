@@ -38,18 +38,37 @@ test.each([
 ])('invalid settings fail clearly: %j', (env) => {
   expect(() => loadConfiguration({ TAG_CONFIG_PATH: path, ...env }, ['--debug-scan'])).toThrow();
 });
-test('existing TOML works and invalid secret is isolated', () => {
-  const toml = join(directory, 'config.toml');
+test('JSON service settings, CLI path precedence and invalid-secret isolation', () => {
   writeFileSync(join(directory, 'bad.json'), '{"eik_hex":"SECRET"}');
   writeFileSync(
-    toml,
-    '[service]\nadapter="hci1"\ndrift_windows=2\n[[tags]]\nid="good"\nsecret_file="good.json"\n[[tags]]\nid="bad"\nsecret_file="bad.json"\n',
+    path,
+    JSON.stringify({
+      service: { adapter: 'hci1', drift_windows: 2, port: 12345 },
+      tags: [
+        { id: 'good', secret_file: 'good.json' },
+        { id: 'bad', secret_file: 'bad.json' },
+      ],
+    }),
   );
-  const cfg = loadConfiguration({}, ['--config', toml, '--debug-scan']);
+  const cfg = loadConfiguration({ TAG_CONFIG_PATH: '/not-used.json', PORT: '3000' }, [
+    '--config',
+    path,
+    '--debug-scan',
+  ]);
   expect(cfg.tags.map((t) => t.id)).toEqual(['good']);
+  expect(cfg.settings.adapter).toBe(1);
   expect(cfg.settings.driftWindows).toBe(2);
-  expect(cfg.settings.port).toBe(15432);
+  expect(cfg.settings.port).toBe(3000);
 });
+test.each(['[service]\nadapter="hci0"', '{"tags": SECRET}', '{"tags": [],}'])(
+  'rejects non-JSON configuration without leaking input',
+  (text) => {
+    writeFileSync(path, text);
+    expect(() => loadConfiguration({ TAG_CONFIG_PATH: path }, ['--debug-scan'])).toThrow(
+      'Cannot read tag configuration (expected valid JSON)',
+    );
+  },
+);
 test('duplicate IDs fail and all-invalid secrets fail', () => {
   writeFileSync(
     path,

@@ -6,11 +6,11 @@ import Database from 'better-sqlite3';
 
 import { manager } from './helpers';
 
-test('opens Python schema and pending outbox without resetting clocks or alerts', () => {
-  const directory = mkdtempSync(join(tmpdir(), 'cat-python-db-'));
+test('loads persisted state and pending outbox without resetting clocks or alerts', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'cat-persisted-db-'));
   const database = join(directory, 'presence.sqlite3');
   const db = new Database(database);
-  db.exec(readFileSync(join(__dirname, 'fixtures/python-state.sql'), 'utf8'));
+  db.exec(readFileSync(join(__dirname, 'fixtures/persisted-state.sql'), 'utf8'));
   db.close();
   const m = manager({ database });
 

@@ -2,17 +2,20 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { Injectable } from '@nestjs/common';
+import { compileFile } from 'pug';
 
 import { monotonicTime, PresenceService, utc, wallTime } from '../presence/presence.service';
 
-export function escapeHtml(value: string): string {
-  return value.replace(
-    /[&<>"']/g,
-    (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#x27;' })[char]!,
-  );
+export function timeAgo(seconds: number): string {
+  const elapsed = Math.max(0, Math.floor(seconds));
+  const unit = elapsed < 60 ? 'second' : elapsed < 3600 ? 'minute' : 'hour';
+  const count = Math.floor(elapsed / (elapsed < 60 ? 1 : elapsed < 3600 ? 60 : 3600));
+
+  return `${count} ${unit}${count === 1 ? '' : 's'} ago`;
 }
+
 export function formatRssi(average: number): string {
-  // Python formats exact ties to even; toFixed rounds them away from zero.
+  // Format exact ties to even; toFixed rounds them away from zero.
   // At one decimal place, .25 and .75 are the only binary-exact ties.
   const magnitude = Math.abs(average);
   const formatted =
@@ -34,15 +37,15 @@ export interface StatusPageViewModel {
   }>;
 }
 
-function asset(path: string): string {
+function assetPath(path: string): string {
   const compiled = join(__dirname, '..', path);
 
-  return readFileSync(existsSync(compiled) ? compiled : join(__dirname, '../..', path), 'utf8');
+  return existsSync(compiled) ? compiled : join(__dirname, '../..', path);
 }
 @Injectable()
 export class WebViewService {
-  private readonly template = asset('views/index.html');
-  readonly css = asset('public/style.css');
+  private readonly template = compileFile(assetPath('views/index.pug'), { compileDebug: false });
+  readonly css = readFileSync(assetPath('public/style.css'), 'utf8');
   constructor(private readonly presence: PresenceService) {}
   viewModel(now = wallTime(), mono = monotonicTime()): StatusPageViewModel {
     return {
@@ -53,14 +56,14 @@ export class WebViewService {
         return {
           id: state.tag_id,
           name: state.name,
-          // Preserve Python's labels: alert confirmation has its own column.
+          // Alert confirmation has its own column.
           status:
             state.last_seen === null
               ? 'Never seen'
               : now - state.last_seen > this.presence.settings.missingAfterSeconds
                 ? 'Missing'
                 : 'Present',
-          lastSeen: state.last_seen === null ? 'Never' : utc(state.last_seen),
+          lastSeen: state.last_seen === null ? 'Never' : timeAgo(now - state.last_seen),
           average: average === null ? '—' : formatRssi(average),
           alertSent: state.alert_sent ? 'Yes' : 'No',
         };
@@ -69,20 +72,6 @@ export class WebViewService {
   }
 
   render(now = wallTime(), mono = monotonicTime()): string {
-    const model = this.viewModel(now, mono);
-    const rows = model.tags
-      .map(
-        (tag) =>
-          `<tr><th scope='row'>${escapeHtml(tag.name)}<small>${escapeHtml(tag.id)}</small></th>` +
-          [tag.status, tag.lastSeen, tag.average, tag.alertSent]
-            .map((value) => `<td>${escapeHtml(value)}</td>`)
-            .join('') +
-          '</tr>',
-      )
-      .join('');
-
-    return this.template
-      .replace('{{generated}}', () => escapeHtml(model.generated))
-      .replace('{{rows}}', () => rows);
+    return this.template(this.viewModel(now, mono));
   }
 }

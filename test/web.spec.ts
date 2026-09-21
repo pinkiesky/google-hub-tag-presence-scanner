@@ -51,7 +51,7 @@ test('real HTTP returns current, escaped, server-rendered state without secrets 
   render.mockImplementation(() => original.call(view, 1112, 120));
   const server = app.getHttpServer() as import('node:http').Server;
   const response = await request(server).get('/').expect(200);
-  expect(response.text).toContain('<!doctype html>');
+  expect(response.text).toMatch(/<!doctype html>/i);
   expect(response.text).toContain('</html>');
 
   for (const value of [
@@ -59,7 +59,7 @@ test('real HTTP returns current, escaped, server-rendered state without secrets 
     'Cat B',
     '<td>Present</td>',
     '<td>Yes</td>',
-    '1970-01-01 00:18:31',
+    '1 second ago',
     '-60.0 dBm',
     'Never seen',
   ]) {
@@ -95,11 +95,20 @@ test('real HTTP returns current, escaped, server-rendered state without secrets 
     await request(server).get(path).expect(404);
   }
 });
-test('RSSI display preserves Python ties-to-even rounding', () => {
+test('RSSI display uses ties-to-even rounding', () => {
   m = manager();
   m.observe('a', 1, -58, 1);
   m.observe('a', 2, -58, 2);
   m.observe('a', 3, -58, 3);
   m.observe('a', 4, -59, 4);
   expect(new WebViewService(m).render(5, 5)).toContain('-58.2 dBm');
+});
+
+test('Pug treats names as escaped data, including template syntax', () => {
+  const name = '#{1 + 1} & <img src=x onerror="alert(1)">';
+  m = manager({}, { tags: [{ ...tags[0], name }] });
+  const page = new WebViewService(m).render(5, 5);
+  expect(page).toContain('#{1 + 1} &amp; &lt;img');
+  expect(page).not.toContain('<img');
+  expect(page).not.toContain('{{rows}}');
 });

@@ -44,7 +44,7 @@ export class PresenceWatchdogService implements OnApplicationBootstrap, BeforeAp
   }
 
   async deliver(): Promise<void> {
-    // Drain available messages in order, as Python does, without blocking BLE.
+    // Drain available messages in order without blocking BLE.
     while (!this.abort.signal.aborted) {
       const item = this.presence.claim();
 

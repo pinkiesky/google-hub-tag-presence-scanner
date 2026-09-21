@@ -1,0 +1,33 @@
+doctype html
+html(lang='en')
+  head
+    meta(charset='utf-8')
+    meta(name='viewport', content='width=device-width, initial-scale=1')
+    title Cat tracker
+    link(rel='stylesheet', href='/style.css')
+  body
+    h1 Cat tracker
+    p Generated at #{ generated }. Refresh this page for updated data.
+    .table
+      table
+        thead
+          tr
+            th Tag
+            th Status
+            th Last seen
+            th Average RSSI · 5 min
+            th Alert sent
+        tbody
+          each tag in tags
+            tr
+              th(scope='row')
+                = tag.name
+                small= tag.id
+              td= tag.status
+              td= tag.lastSeen
+              td= tag.average
+              td= tag.alertSent
+    p.
+      RSSI averages use observations since service startup, up to five minutes. — means no recent
+      observations. Alert sent means Telegram confirmed the absence notification for the current
+      episode.

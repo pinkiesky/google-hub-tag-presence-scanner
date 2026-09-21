@@ -1,4 +1,4 @@
-// UTC Unix seconds preserve the Python database representation exactly.
+// Timestamps are stored as UTC Unix seconds.
 export interface TagState {
   tag_id: string;
   name: string;

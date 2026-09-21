@@ -20,7 +20,7 @@ export class SqliteService implements OnApplicationShutdown {
       if (path !== ':memory:') {
         mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
         this.lock = openSync(`${path}.lock`, 'a', 0o600);
-        // Same flock as Python: mutually exclusive even during migration.
+        // Prevent multiple service processes from sharing the database.
         flockSync(this.lock, 'exnb');
       }
 

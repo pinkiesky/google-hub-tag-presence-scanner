@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
 import { Logger } from '@nestjs/common';
-import { parse } from 'smol-toml';
 
 import { Tag } from '../tags/tag.types';
 
@@ -47,21 +46,21 @@ function readConfiguration(
   const path =
     args[configIndex + 1] && configIndex >= 0
       ? args[configIndex + 1]
-      : env.TAG_CONFIG_PATH || '/etc/cat-tracker/config.toml';
+      : env.TAG_CONFIG_PATH || '/etc/cat-tracker/config.json';
   let raw: Record<string, unknown>;
 
   try {
     const text = readFileSync(path, 'utf8');
-    const parsed: unknown = path.endsWith('.toml') ? parse(text) : JSON.parse(text);
+    const parsed: unknown = JSON.parse(text);
     raw = Array.isArray(parsed) ? { tags: parsed } : object(parsed);
   } catch {
-    throw new Error('Cannot read tag configuration (expected TOML or JSON)');
+    throw new Error('Cannot read tag configuration (expected valid JSON)');
   }
 
   const service = raw.service === undefined ? {} : object(raw.service);
 
-  function number(name: string, legacy: string, fallback: number, zero = false): number {
-    const value = env[name] ?? service[legacy] ?? fallback;
+  function number(name: string, field: string, fallback: number, zero = false): number {
+    const value = env[name] ?? service[field] ?? fallback;
 
     if ((typeof value !== 'number' && typeof value !== 'string') || String(value).trim() === '') {
       throw new Error(`Invalid ${name}`);

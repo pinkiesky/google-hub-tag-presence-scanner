@@ -1,13 +1,6 @@
 node_modules/
 dist/
 coverage/
-.venv/
-.mypy_cache/
-.pytest_cache/
-.ruff_cache/
-src/cat_tracker/
-tests/
 test/fixtures/
-docs/PYTHON.md
 package-lock.json
 secrets/

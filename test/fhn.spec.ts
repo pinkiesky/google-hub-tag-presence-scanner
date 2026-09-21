@@ -1,11 +1,11 @@
 import { EidService } from '../src/fhn/eid.service';
 import { FHN_UUID, FhnParserService } from '../src/fhn/fhn-parser.service';
 import { TagMatcherService } from '../src/fhn/tag-matcher.service';
-import vectors from './fixtures/python-eids.json';
+import vectors from './fixtures/eid-vectors.json';
 import { config, tags } from './helpers';
 
 const eid = new EidService();
-test.each(vectors)('Python vector size=$size timestamp=$timestamp key=$eik', (v) => {
+test.each(vectors)('Known EID vector size=$size timestamp=$timestamp key=$eik', (v) => {
   expect(
     eid.calculate(Buffer.from(v.eik, 'hex'), v.timestamp - v.pairDate, v.size).toString('hex'),
   ).toBe(v.expectedEid);

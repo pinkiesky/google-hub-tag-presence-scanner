@@ -26,19 +26,21 @@
     "@stoprocent/noble": "^2.3.0",
     "better-sqlite3": "^12.0.0",
     "fs-ext": "^2.1.1",
+    "pug": "^3.0.4",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.2",
-    "smol-toml": "^1.4.0"
+    "rxjs": "^7.8.2"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.0",
     "@nestjs/testing": "^11.1.0",
+    "@prettier/plugin-pug": "^3.5.0",
     "@stylistic/eslint-plugin": "^5.10.0",
     "@types/better-sqlite3": "^7.6.0",
     "@types/express": "^5.0.0",
     "@types/fs-ext": "^2.0.3",
     "@types/jest": "^30.0.0",
     "@types/node": "^24.0.0",
+    "@types/pug": "^2.0.10",
     "@types/supertest": "^6.0.0",
     "eslint": "^9.0.0",
     "eslint-plugin-simple-import-sort": "^14.0.0",
