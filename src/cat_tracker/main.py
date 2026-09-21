@@ -15,6 +15,7 @@ from .config import Config, load_config
 from .fhn.matcher import Matcher
 from .notifications.telegram import Telegram, deliver_notifications
 from .presence.manager import PresenceManager
+from .status_page import serve_status
 from .storage.sqlite import Store
 
 log = logging.getLogger(__name__)
@@ -58,6 +59,7 @@ async def run(config: Config, debug_scan: bool) -> None:
                 [
                     asyncio.create_task(scan(matcher, config.service, manager.observe)),
                     asyncio.create_task(watchdog(manager)),
+                    asyncio.create_task(serve_status(manager)),
                     asyncio.create_task(
                         deliver_notifications(
                             manager, Telegram(client, config.token, config.chat_id)

@@ -238,3 +238,28 @@ hardware with your credentials.
 
 References: [Bleak Linux backend](https://bleak.readthedocs.io/en/latest/backends/linux.html),
 [Telegram Bot API](https://core.telegram.org/bots/api#sendmessage).
+
+## LAN status page
+
+In normal service mode, open `http://<pi-lan-ip>:15432/` (for this Pi,
+`http://192.168.0.123:15432/`). The port is fixed at **15432**. No nginx or extra
+Python dependency is needed. Debug scan mode does not start the page.
+
+The page shows each tag's status, last seen in UTC, arithmetic mean RSSI over the
+last five minutes, and whether Telegram confirmed its current absence alert.
+RSSI samples are held in memory and refill after restart; no recent samples show
+`—`. HTML snapshots update every 30 seconds. Refresh the browser to load the
+latest snapshot; there is no JavaScript or automatic refresh. Check the generated
+timestamp when assessing freshness.
+
+The HTTP listener binds to IPv4 interfaces and accepts only loopback, RFC1918
+private addresses and IPv4 link-local peers. Other client addresses are rejected;
+forwarded headers do not grant access. It serves only `/` and `/index.html`, with
+no file browsing, API, or write actions. Requests read an immutable HTML snapshot
+and never access SQLite or the mutable presence manager. The web thread stops
+with the main service. A port conflict fails startup and is logged by the service.
+
+This is an unauthenticated page for a trusted LAN. Do not port-forward it, expose
+it through a public reverse proxy, or tunnel public traffic to it: a local proxy
+can appear to be a permitted private peer. If the Pi has a firewall, allow TCP
+15432 only from your intended LAN subnet. No firewall rules are changed by setup.

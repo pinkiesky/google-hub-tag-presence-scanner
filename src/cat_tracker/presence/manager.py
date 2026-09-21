@@ -1,4 +1,6 @@
 import logging
+import time
+from collections import deque
 from datetime import UTC, datetime
 
 from ..config import Settings
@@ -21,8 +23,18 @@ class PresenceManager:
         self.states = store.load(tags, now)
         self.grace_until = monotonic + settings.startup_grace_seconds
         self.inflight: int | None = None
+        self.rssi_samples: dict[str, deque[tuple[float, int]]] = {tag.id: deque() for tag in tags}
+
+    def average_rssi(self, tag_id: str, monotonic: float) -> float | None:
+        samples = self.rssi_samples[tag_id]
+        while samples and samples[0][0] <= monotonic - 300:
+            samples.popleft()
+        return sum(rssi for _, rssi in samples) / len(samples) if samples else None
 
     def observe(self, tag_id: str, now: float, rssi: int) -> None:
+        monotonic = time.monotonic()
+        self.rssi_samples[tag_id].append((monotonic, rssi))
+        self.average_rssi(tag_id, monotonic)
         state = self.states[tag_id]
         if state.last_seen is not None and now < state.last_seen:
             # A backward wall-clock step must not leave an impossible future last_seen.
