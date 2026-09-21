@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { TrackerConfig } from '../config/config.service';
 export class DeliveryError extends Error {
-  constructor(readonly retryAfter = 0) { super('Telegram delivery failed'); }
+  constructor(readonly retryAfter = 0) {
+    super('Telegram delivery failed');
+  }
 }
 @Injectable()
 export class TelegramService {
@@ -9,12 +11,16 @@ export class TelegramService {
   async send(message: string, signal?: AbortSignal): Promise<void> {
     try {
       const timeout = AbortSignal.timeout(20_000);
-      const response = await fetch(`https://api.telegram.org/bot${this.config.value.token}/sendMessage`, {
-        method: 'POST', redirect: 'error',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: this.config.value.chatId, text: message }),
-        signal: signal ? AbortSignal.any([timeout, signal]) : timeout,
-      });
+      const response = await fetch(
+        `https://api.telegram.org/bot${this.config.value.token}/sendMessage`,
+        {
+          method: 'POST',
+          redirect: 'error',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: this.config.value.chatId, text: message }),
+          signal: signal ? AbortSignal.any([timeout, signal]) : timeout,
+        },
+      );
       const data: unknown = await response.json();
       if (!data || typeof data !== 'object') throw new DeliveryError();
       const result = data as { ok?: unknown; parameters?: { retry_after?: unknown } };

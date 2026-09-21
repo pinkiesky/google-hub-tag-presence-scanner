@@ -21,8 +21,14 @@ export class EidService {
     }
     const timestamp = Buffer.alloc(4);
     timestamp.writeUInt32BE((beaconSeconds & ~1023) >>> 0);
-    const block = Buffer.concat([Buffer.alloc(11, 255), Buffer.from([10]), timestamp,
-      Buffer.alloc(11), Buffer.from([10]), timestamp]);
+    const block = Buffer.concat([
+      Buffer.alloc(11, 255),
+      Buffer.from([10]),
+      timestamp,
+      Buffer.alloc(11),
+      Buffer.from([10]),
+      timestamp,
+    ]);
     const cipher = createCipheriv('aes-256-ecb', eik, null);
     cipher.setAutoPadding(false);
     const encrypted = Buffer.concat([cipher.update(block), cipher.final()]);

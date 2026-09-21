@@ -8,7 +8,8 @@ export const duration = (seconds: number): string => {
   const minutes = Math.floor(Math.max(0, Math.trunc(seconds)) / 60);
   return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
 };
-export const utc = (seconds: number): string => new Date(seconds * 1000).toISOString().slice(0, 19).replace('T', ' ');
+export const utc = (seconds: number): string =>
+  new Date(seconds * 1000).toISOString().slice(0, 19).replace('T', ' ');
 export const absenceStart = (state: TagState): number => state.last_seen ?? state.created_at;
 @Injectable()
 export class PresenceService {
@@ -18,7 +19,10 @@ export class PresenceService {
   private inflight: number | null = null;
   private readonly samples = new Map<string, Array<{ timestamp: number; rssi: number }>>();
   private readonly logger = new Logger(PresenceService.name);
-  constructor(readonly store: SqliteService, config: TrackerConfig) {
+  constructor(
+    readonly store: SqliteService,
+    config: TrackerConfig,
+  ) {
     this.settings = config.settings;
     this.states = store.load(config.tags, wallTime());
     this.graceUntil = monotonicTime() + this.settings.startupGraceSeconds;
@@ -30,25 +34,35 @@ export class PresenceService {
     let expired = 0;
     while (expired < samples.length && samples[expired].timestamp <= mono - 300) expired++;
     if (expired) samples.splice(0, expired);
-    return samples.length ? samples.reduce((sum, sample) => sum + sample.rssi, 0) / samples.length : null;
+    return samples.length
+      ? samples.reduce((sum, sample) => sum + sample.rssi, 0) / samples.length
+      : null;
   }
   observe(id: string, now: number, rssi: number, mono = monotonicTime()): void {
     this.samples.get(id)!.push({ timestamp: mono, rssi });
     this.averageRssi(id, mono);
     const state = this.states.get(id)!;
-    if (state.last_seen !== null && now < state.last_seen) this.logger.warn(`Clock moved backwards for tag ${id}`);
+    if (state.last_seen !== null && now < state.last_seen)
+      this.logger.warn(`Clock moved backwards for tag ${id}`);
     this.store.db.transaction(() => {
       if (state.missing_since !== null) {
-        const pending = this.store.db.prepare("SELECT id FROM outbox WHERE tag_id=? AND episode=? AND kind='absence'")
+        const pending = this.store.db
+          .prepare("SELECT id FROM outbox WHERE tag_id=? AND episode=? AND kind='absence'")
           .get(id, state.episode) as { id: number } | undefined;
         if (state.alert_sent || (pending && pending.id === this.inflight)) {
-          this.store.enqueue(state, 'recovery', `✓ ${state.name} is detected again.\nAbsent for ${duration(now - absenceStart(state))}.\nRSSI: ${rssi} dBm.`);
+          this.store.enqueue(
+            state,
+            'recovery',
+            `✓ ${state.name} is detected again.\nAbsent for ${duration(now - absenceStart(state))}.\nRSSI: ${rssi} dBm.`,
+          );
           this.logger.log(`Tag recovered: ${id}`);
         } else if (pending) this.store.db.prepare('DELETE FROM outbox WHERE id=?').run(pending.id);
         state.episode++;
       }
-      state.last_seen = now; state.last_rssi = rssi;
-      state.missing_since = null; state.alert_sent = false;
+      state.last_seen = now;
+      state.last_rssi = rssi;
+      state.missing_since = null;
+      state.alert_sent = false;
       this.store.save(state);
     })();
     this.logger.debug(`Tag matched: ${id} RSSI=${rssi} dBm`);
@@ -61,10 +75,21 @@ export class PresenceService {
           state.missing_since = absenceStart(state);
           this.logger.log(`Tag became missing: ${state.tag_id}`);
         }
-        if (mono >= this.graceUntil && absent > this.settings.alertAfterSeconds && !state.alert_sent) {
-          const seen = state.last_seen === null ? 'never (timer starts at first service start)' : `${utc(state.last_seen)} UTC`;
+        if (
+          mono >= this.graceUntil &&
+          absent > this.settings.alertAfterSeconds &&
+          !state.alert_sent
+        ) {
+          const seen =
+            state.last_seen === null
+              ? 'never (timer starts at first service start)'
+              : `${utc(state.last_seen)} UTC`;
           const rssi = state.last_rssi === null ? 'unknown' : `${state.last_rssi} dBm`;
-          this.store.enqueue(state, 'absence', `⚠ ${state.name} has not been detected for ${duration(absent)}.\nLast seen: ${seen}.\nLast RSSI: ${rssi}.`);
+          this.store.enqueue(
+            state,
+            'absence',
+            `⚠ ${state.name} has not been detected for ${duration(absent)}.\nLast seen: ${seen}.\nLast RSSI: ${rssi}.`,
+          );
         }
         this.store.save(state);
       }
@@ -80,7 +105,8 @@ export class PresenceService {
     const state = this.states.get(item.tag_id)!;
     this.store.db.transaction(() => {
       if (item.kind === 'absence' && state.episode === item.episode) {
-        state.alert_sent = true; this.store.save(state);
+        state.alert_sent = true;
+        this.store.save(state);
       }
       this.store.db.prepare('DELETE FROM outbox WHERE id=?').run(item.id);
     })();
@@ -89,7 +115,9 @@ export class PresenceService {
   }
   failed(item: Notification, now = wallTime(), retryAfter = 0): void {
     const delay = Math.max(retryAfter, Math.min(900, 30 * 2 ** Math.min(item.attempts, 5)));
-    this.store.db.prepare('UPDATE outbox SET attempts=attempts+1,next_attempt=? WHERE id=?').run(now + delay, item.id);
+    this.store.db
+      .prepare('UPDATE outbox SET attempts=attempts+1,next_attempt=? WHERE id=?')
+      .run(now + delay, item.id);
     this.inflight = null;
   }
 }

@@ -10,7 +10,14 @@ class LifecycleModule {}
 @Module({})
 export class AppModule {
   static register(debugScan = false): DynamicModule {
-    return { module: AppModule, imports: [TrackerConfigModule, LifecycleModule,
-      BluetoothModule.register(debugScan), ...(debugScan ? [] : [NotificationsModule, WebModule])] };
+    return {
+      module: AppModule,
+      imports: [
+        TrackerConfigModule,
+        LifecycleModule,
+        BluetoothModule.register(debugScan),
+        ...(debugScan ? [] : [NotificationsModule, WebModule]),
+      ],
+    };
   }
 }

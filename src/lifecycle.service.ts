@@ -10,7 +10,9 @@ export class LifecycleService {
     process.exitCode = 1;
     // Schedule closure outside callbacks/worker promises to avoid self-await.
     setImmediate(() => {
-      void this.stopApplication?.().catch(() => { process.exitCode = 1; });
+      void this.stopApplication?.().catch(() => {
+        process.exitCode = 1;
+      });
     });
   }
 }

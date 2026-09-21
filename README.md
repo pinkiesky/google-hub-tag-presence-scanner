@@ -23,6 +23,10 @@ the Pi itself; do not copy x86 `node_modules` to ARM64. Production runs compiled
 `node dist/main.js`, without ts-node. `npm run start:dev` watches TypeScript;
 `npm run test:watch` watches tests. Templates/CSS are copied into `dist` on build.
 
+Use `npm run format` to format the project with Prettier, or `npm run format:check`
+to check formatting without changing files. Generated files, reference fixtures,
+and the retained Python implementation are excluded.
+
 Tests use synthetic secrets, a Python-generated SQLite dump, mocked Bluetooth and
 Telegram, and a real localhost HTTP listener. No test requires real keys or sends
 Telegram messages. A restricted sandbox must permit local sockets for HTTP tests.
@@ -35,19 +39,19 @@ like `tags.example.json`. Relative secret paths resolve against the config file.
 JSON may be `{ "tags": [...] }` or a tag array; a `service` object accepts the same
 snake_case fields as TOML. Environment variables override service settings.
 
-| Variable | Default |
-| --- | --- |
-| `TAG_CONFIG_PATH` | `/etc/cat-tracker/config.toml` |
-| `DATABASE_PATH` | `/var/lib/cat-tracker/presence.sqlite3` |
-| `BLUETOOTH_ADAPTER` | `0` (`hci0` and `hci1` also accepted) |
-| `PORT` | `15432` |
-| `ALERT_AFTER_SECONDS` | `3600` |
-| `MISSING_AFTER_SECONDS` | `60` |
-| `STARTUP_GRACE_SECONDS` | `120` |
-| `WATCHDOG_INTERVAL_SECONDS` | `30` |
-| `DRIFT_WINDOWS` | `16` (1–32) |
-| `SCANNER_CYCLE_SECONDS` | `300` |
-| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | required, except `--debug-scan` |
+| Variable                                 | Default                                 |
+| ---------------------------------------- | --------------------------------------- |
+| `TAG_CONFIG_PATH`                        | `/etc/cat-tracker/config.toml`          |
+| `DATABASE_PATH`                          | `/var/lib/cat-tracker/presence.sqlite3` |
+| `BLUETOOTH_ADAPTER`                      | `0` (`hci0` and `hci1` also accepted)   |
+| `PORT`                                   | `15432`                                 |
+| `ALERT_AFTER_SECONDS`                    | `3600`                                  |
+| `MISSING_AFTER_SECONDS`                  | `60`                                    |
+| `STARTUP_GRACE_SECONDS`                  | `120`                                   |
+| `WATCHDOG_INTERVAL_SECONDS`              | `30`                                    |
+| `DRIFT_WINDOWS`                          | `16` (1–32)                             |
+| `SCANNER_CYCLE_SECONDS`                  | `300`                                   |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | required, except `--debug-scan`         |
 
 `@nestjs/config` loads/validates settings. Environment files are loaded by systemd;
 foreground runs use exported environment variables. The application does not
@@ -164,6 +168,7 @@ and adapter permissions. Missing means not detected, not proof that a cat left.
 
    Adapt the database path if your config differs. The online SQLite backup
    includes committed WAL data; do not copy a live database without its WAL.
+
 3. Install/build/test Node using the scripts above. Preserve the config file,
    secret files, environment file, IDs, and database path.
 4. Stop Python, start Node, and inspect the page/logs:
@@ -178,6 +183,7 @@ and adapter permissions. Missing means not detected, not proof that a cat left.
 
    Never run two scanners simultaneously. Both implementations acquire the same
    `DATABASE_PATH.lock` flock, protecting state/outbox ownership as well.
+
 5. Confirm both real IDs and RSSI in logs, fresh page values after browser refresh,
    grace period, one disappearance/recovery cycle, and restart continuity. Allow
    more than one hour plus one watchdog interval for the default alert test.

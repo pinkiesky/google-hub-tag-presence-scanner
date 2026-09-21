@@ -19,12 +19,26 @@ config=load_config(Path(sys.argv[1]),debug_scan=True)
 now=int(sys.argv[2])
 print(json.dumps([{'id':t.id,'clock':int(now-t.pair_date+t.clock_offset_seconds)+offset,'size':size,'eid':calculate_eid(t.eik,int(now-t.pair_date+t.clock_offset_seconds)+offset,size).hex()} for t in config.tags for offset in (-16384,0,16384) for size in (20,32)]))
 `;
-  const result = spawnSync(python, ['-c', script, path, String(now)], { encoding: 'utf8', timeout: 30000 });
+  const result = spawnSync(python, ['-c', script, path, String(now)], {
+    encoding: 'utf8',
+    timeout: 30000,
+  });
   if (result.status !== 0) throw new Error();
   const vectors = JSON.parse(result.stdout);
   for (const vector of vectors) {
-    const tag = config.tags.find(t => t.id === vector.id);
-    if (!tag || new EidService().calculate(tag.eik, vector.clock, vector.size).toString('hex') !== vector.eid) throw new Error();
+    const tag = config.tags.find((t) => t.id === vector.id);
+    if (
+      !tag ||
+      new EidService().calculate(tag.eik, vector.clock, vector.size).toString('hex') !== vector.eid
+    )
+      throw new Error();
   }
-  console.log(`PASS: ${vectors.length} Python/Node EID comparisons across ${config.tags.length} configured tags; keys remain private.`);
-} catch { console.error('Parity check failed; verify Python environment and configuration. No secret details logged.'); process.exitCode = 1; }
+  console.log(
+    `PASS: ${vectors.length} Python/Node EID comparisons across ${config.tags.length} configured tags; keys remain private.`,
+  );
+} catch {
+  console.error(
+    'Parity check failed; verify Python environment and configuration. No secret details logged.',
+  );
+  process.exitCode = 1;
+}

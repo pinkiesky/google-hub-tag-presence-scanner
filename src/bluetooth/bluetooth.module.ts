@@ -5,7 +5,10 @@ import { BluetoothService, createNoble, NOBLE_FACTORY } from './bluetooth.servic
 @Module({})
 export class BluetoothModule {
   static register(debugScan: boolean): DynamicModule {
-    return { module: BluetoothModule, imports: [FhnModule, ...(debugScan ? [] : [PresenceModule])],
-      providers: [BluetoothService, { provide: NOBLE_FACTORY, useValue: createNoble }] };
+    return {
+      module: BluetoothModule,
+      imports: [FhnModule, ...(debugScan ? [] : [PresenceModule])],
+      providers: [BluetoothService, { provide: NOBLE_FACTORY, useValue: createNoble }],
+    };
   }
 }

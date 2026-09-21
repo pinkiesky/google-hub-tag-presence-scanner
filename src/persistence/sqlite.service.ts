@@ -42,36 +42,61 @@ export class SqliteService implements OnApplicationShutdown {
     new Logger('SqliteService').log('SQLite opened');
   }
   load(tags: readonly Tag[], now: number): Map<string, TagState> {
-    return this.db.transaction(() => new Map(tags.map(tag => {
-      const row = this.db.prepare('SELECT * FROM states WHERE tag_id=?').get(tag.id) as TagState | undefined;
-      const state: TagState = row ? { ...row, name: tag.name, alert_sent: Boolean(row.alert_sent) } : {
-        tag_id: tag.id, name: tag.name, created_at: now, last_seen: null, last_rssi: null,
-        alert_sent: false, missing_since: null, episode: 0,
-      };
-      this.save(state);
-      return [tag.id, state];
-    })))();
+    return this.db.transaction(
+      () =>
+        new Map(
+          tags.map((tag) => {
+            const row = this.db.prepare('SELECT * FROM states WHERE tag_id=?').get(tag.id) as
+              TagState | undefined;
+            const state: TagState = row
+              ? { ...row, name: tag.name, alert_sent: Boolean(row.alert_sent) }
+              : {
+                  tag_id: tag.id,
+                  name: tag.name,
+                  created_at: now,
+                  last_seen: null,
+                  last_rssi: null,
+                  alert_sent: false,
+                  missing_since: null,
+                  episode: 0,
+                };
+            this.save(state);
+            return [tag.id, state];
+          }),
+        ),
+    )();
   }
   save(state: TagState): void {
-    this.db.prepare(`INSERT OR REPLACE INTO states
+    this.db
+      .prepare(
+        `INSERT OR REPLACE INTO states
       (tag_id,name,created_at,last_seen,last_rssi,alert_sent,missing_since,episode)
-      VALUES (@tag_id,@name,@created_at,@last_seen,@last_rssi,@alert_sent,@missing_since,@episode)`)
+      VALUES (@tag_id,@name,@created_at,@last_seen,@last_rssi,@alert_sent,@missing_since,@episode)`,
+      )
       .run({ ...state, alert_sent: Number(state.alert_sent) });
   }
   enqueue(state: TagState, kind: Notification['kind'], message: string): void {
-    this.db.prepare('INSERT OR IGNORE INTO outbox(tag_id,episode,kind,message) VALUES(?,?,?,?)')
+    this.db
+      .prepare('INSERT OR IGNORE INTO outbox(tag_id,episode,kind,message) VALUES(?,?,?,?)')
       .run(state.tag_id, state.episode, kind, message);
   }
   nextNotification(now: number, active: ReadonlyMap<string, TagState>): Notification | null {
-    const rows = this.db.prepare(`SELECT id,tag_id,episode,kind,message,attempts FROM outbox o
+    const rows = this.db
+      .prepare(
+        `SELECT id,tag_id,episode,kind,message,attempts FROM outbox o
       WHERE next_attempt <= ? AND NOT EXISTS (
         SELECT 1 FROM outbox older WHERE older.tag_id=o.tag_id AND older.id<o.id
-      ) ORDER BY id`).iterate(now) as IterableIterator<Notification>;
+      ) ORDER BY id`,
+      )
+      .iterate(now) as IterableIterator<Notification>;
     for (const row of rows) if (active.has(row.tag_id)) return row;
     return null;
   }
   onApplicationShutdown(): void {
     if (this.db.open) this.db.close();
-    if (this.lock !== undefined) { closeSync(this.lock); this.lock = undefined; }
+    if (this.lock !== undefined) {
+      closeSync(this.lock);
+      this.lock = undefined;
+    }
   }
 }
