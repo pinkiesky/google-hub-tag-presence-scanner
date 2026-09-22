@@ -44,6 +44,7 @@ async function bootstrap(): Promise<void> {
     throw new Error('Application startup failed');
   }
 }
+
 void bootstrap().catch((error: unknown) => {
   Logger.overrideLogger(new ConsoleLogger({ logLevels: ['error'] }));
   new Logger('Bootstrap').error(

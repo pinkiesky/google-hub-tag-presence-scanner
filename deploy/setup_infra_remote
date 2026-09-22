@@ -20,9 +20,6 @@ install -d -o cat-tracker -g cat-tracker -m 0700 /var/lib/cat-tracker
 if [[ ! -e /etc/cat-tracker/config.json ]]; then
     install -o root -g cat-tracker -m 0640 /opt/cat-tracker/config.example.json /etc/cat-tracker/config.json
 fi
-if [[ ! -e /etc/cat-tracker/telegram.env ]]; then
-    install -o root -g root -m 0600 /opt/cat-tracker/.env.example /etc/cat-tracker/telegram.env
-fi
 cd /opt/cat-tracker
 npm ci
 npm run build
@@ -34,4 +31,4 @@ systemctl enable --now bluetooth
 bluetoothctl power on
 systemctl enable cat-tracker
 REMOTE
-echo 'Infrastructure ready. Add tag secrets and Telegram credentials, then run restart_remote.'
+echo 'Infrastructure ready. Add tag secrets, then run restart_remote.'

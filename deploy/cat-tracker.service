@@ -10,7 +10,6 @@ User=cat-tracker
 Group=cat-tracker
 SupplementaryGroups=bluetooth
 WorkingDirectory=/opt/cat-tracker
-EnvironmentFile=/etc/cat-tracker/telegram.env
 Environment=NODE_ENV=production
 ExecStart=/usr/bin/node /opt/cat-tracker/dist/main.js
 Restart=always

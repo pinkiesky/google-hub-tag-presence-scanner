@@ -6,9 +6,6 @@ import { Logger } from '@nestjs/common';
 import { Tag } from '../tags/tag.types';
 
 export interface Settings {
-  readonly alertAfterSeconds: number;
-  readonly startupGraceSeconds: number;
-  readonly watchdogIntervalSeconds: number;
   readonly missingAfterSeconds: number;
   readonly driftWindows: number;
   readonly scannerCycleSeconds: number;
@@ -19,8 +16,6 @@ export interface Settings {
 export interface Configuration {
   readonly settings: Settings;
   readonly tags: readonly Tag[];
-  readonly token: string;
-  readonly chatId: string;
   readonly debugScan: boolean;
 }
 
@@ -59,7 +54,7 @@ function readConfiguration(
 
   const service = raw.service === undefined ? {} : object(raw.service);
 
-  function number(name: string, field: string, fallback: number, zero = false): number {
+  function number(name: string, field: string, fallback: number): number {
     const value = env[name] ?? service[field] ?? fallback;
 
     if ((typeof value !== 'number' && typeof value !== 'string') || String(value).trim() === '') {
@@ -68,12 +63,13 @@ function readConfiguration(
 
     const n = Number(value);
 
-    if (!Number.isFinite(n) || (zero ? n < 0 : n <= 0)) {
+    if (!Number.isFinite(n) || n <= 0) {
       throw new Error(`Invalid ${name}`);
     }
 
     return n;
   }
+
   const adapter = String(env.BLUETOOTH_ADAPTER ?? service.adapter ?? 'hci0');
 
   if (!/^(hci)?\d+$/.test(adapter)) {
@@ -87,9 +83,6 @@ function readConfiguration(
   }
 
   const settings: Settings = Object.freeze({
-    alertAfterSeconds: number('ALERT_AFTER_SECONDS', 'alert_after_seconds', 3600),
-    startupGraceSeconds: number('STARTUP_GRACE_SECONDS', 'startup_grace_seconds', 120, true),
-    watchdogIntervalSeconds: number('WATCHDOG_INTERVAL_SECONDS', 'watchdog_interval_seconds', 30),
     missingAfterSeconds: number('MISSING_AFTER_SECONDS', 'missing_after_seconds', 60),
     driftWindows: number('DRIFT_WINDOWS', 'drift_windows', 16),
     scannerCycleSeconds: number('SCANNER_CYCLE_SECONDS', 'scanner_cycle_seconds', 300),
@@ -97,10 +90,6 @@ function readConfiguration(
     database,
     port: number('PORT', 'port', 15432),
   });
-
-  if (settings.missingAfterSeconds > settings.alertAfterSeconds) {
-    throw new Error('MISSING_AFTER_SECONDS exceeds ALERT_AFTER_SECONDS');
-  }
 
   if (!Number.isInteger(settings.driftWindows) || settings.driftWindows > 32) {
     throw new Error('DRIFT_WINDOWS must be 1–32');
@@ -183,17 +172,11 @@ function readConfiguration(
     throw new Error('No usable tags configured');
   }
 
-  const token = env.TELEGRAM_BOT_TOKEN ?? '',
-    chatId = env.TELEGRAM_CHAT_ID ?? '';
-
-  if (!debugScan && (!token.trim() || !chatId.trim())) {
-    throw new Error('TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are required');
-  }
-
-  return Object.freeze({ settings, tags: Object.freeze(tags), token, chatId, debugScan });
+  return Object.freeze({ settings, tags: Object.freeze(tags), debugScan });
 }
 
 export class ConfigurationError extends Error {}
+
 export function loadConfiguration(
   env: NodeJS.ProcessEnv = process.env,
   args = process.argv.slice(2),

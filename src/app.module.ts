@@ -3,7 +3,6 @@ import { DynamicModule, Global, Module } from '@nestjs/common';
 import { BluetoothModule } from './bluetooth/bluetooth.module';
 import { TrackerConfigModule } from './config/config.module';
 import { LifecycleService } from './lifecycle.service';
-import { NotificationsModule } from './notifications/notifications.module';
 import { WebModule } from './web/web.module';
 
 @Global()
@@ -18,7 +17,7 @@ export class AppModule {
         TrackerConfigModule,
         LifecycleModule,
         BluetoothModule.register(debugScan),
-        ...(debugScan ? [] : [NotificationsModule, WebModule]),
+        ...(debugScan ? [] : [WebModule]),
       ],
     };
   }

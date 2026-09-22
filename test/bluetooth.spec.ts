@@ -8,6 +8,8 @@ import { EidService } from '../src/fhn/eid.service';
 import { FhnParserService } from '../src/fhn/fhn-parser.service';
 import { TagMatcherService } from '../src/fhn/tag-matcher.service';
 import { LifecycleService } from '../src/lifecycle.service';
+import { MetricsService } from '../src/metrics/metrics.service';
+import { TagObservationService } from '../src/observations/tag-observation.service';
 import { PresenceService } from '../src/presence/presence.service';
 import { config, manager, tags } from './helpers';
 
@@ -33,14 +35,18 @@ function setup(cycle = 300) {
   scanner = new BluetoothService(
     cfg,
     new FhnParserService(),
-    new TagMatcherService(cfg, new EidService()),
+    new TagMatcherService(
+      cfg,
+      new EidService(),
+      new TagObservationService(presence, new MetricsService(presence)),
+    ),
     lifecycle,
     factory,
-    presence,
   );
 
   return factory;
 }
+
 beforeEach(() => jest.useFakeTimers({ now: (10000 + 2048) * 1000 }));
 afterEach(async () => {
   await scanner?.beforeApplicationShutdown();
@@ -64,7 +70,7 @@ test('one scanner, unfiltered service data and both real matching paths', async 
         serviceData: [{ uuid: 'feaa', data: Buffer.concat([Buffer.from([0x40]), eid]) }],
       },
     });
-    expect(presence.states.get(tag.id)!.last_rssi).toBe(-62);
+    expect(presence.getAllStatuses().find((status) => status.id === tag.id)!.signalDbm).toBe(-62);
   }
 
   await scanner.beforeApplicationShutdown();

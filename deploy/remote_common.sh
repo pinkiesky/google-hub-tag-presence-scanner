@@ -28,7 +28,7 @@ REMOTE
         "$PROJECT_DIR/tsconfig.json" "$PROJECT_DIR/tsconfig.build.json" "$PROJECT_DIR/tsconfig.test.json" \
         "$PROJECT_DIR/nest-cli.json" "$PROJECT_DIR/jest.config.cjs" "$PROJECT_DIR/eslint.config.mjs" \
         "$PROJECT_DIR/.prettierrc.json" "$PROJECT_DIR/.prettierignore" \
-        "$PROJECT_DIR/README.md" "$PROJECT_DIR/config.example.json" "$PROJECT_DIR/tags.example.json" "$PROJECT_DIR/.env.example" \
+        "$PROJECT_DIR/README.md" "$PROJECT_DIR/config.example.json" "$PROJECT_DIR/tags.example.json" \
         "$REMOTE:/opt/cat-tracker/"
     rsync -az --rsync-path='sudo -n rsync' --chmod=D755,F644 \
         "$PROJECT_DIR/deploy/cat-tracker.service" \

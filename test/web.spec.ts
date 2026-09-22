@@ -42,13 +42,12 @@ test('real HTTP returns current, escaped, server-rendered state without secrets 
     .compile();
   app = module.createNestApplication();
   await app.listen(0, '127.0.0.1');
-  m.observe('a', 1110, -50, 10);
-  m.observe('a', 1111, -70, 110);
-  m.states.get('a')!.alert_sent = true;
+  m.observe('a', 1110, -50);
+  m.observe('a', 1111, -70);
   const view = app.get(WebViewService);
   const render = jest.spyOn(view, 'render');
   const original = WebViewService.prototype.render;
-  render.mockImplementation(() => original.call(view, 1112, 120));
+  render.mockImplementation(() => original.call(view, 1112));
   const server = app.getHttpServer() as import('node:http').Server;
   const response = await request(server).get('/').expect(200);
   expect(response.text).toMatch(/<!doctype html>/i);
@@ -58,31 +57,34 @@ test('real HTTP returns current, escaped, server-rendered state without secrets 
     '&lt;script&gt;Cat A&lt;/script&gt;',
     'Cat B',
     '<td>Present</td>',
-    '<td>Yes</td>',
-    '1 second ago',
-    '-60.0 dBm',
-    'Never seen',
+    '-70 dBm',
+    'Not present',
+    '<td>—</td>',
   ]) {
     expect(response.text).toContain(value);
   }
 
   for (const forbidden of [
     '<script>',
+    'Alert sent',
+    'Last seen',
+    'Average RSSI',
+    'Telegram',
+    'Generated at',
+    'http-equiv',
     'fetch(',
     'XMLHttpRequest',
     'WebSocket',
     'EventSource',
     '/api/status',
-    cfg.value.token,
-    cfg.value.chatId,
     ...cfg.tags.map((t) => t.eik.toString('hex')),
   ]) {
     expect(response.text).not.toContain(forbidden);
   }
 
   expect(response.headers['cache-control']).toBe('no-store');
-  m.observe('b', 1112, -40, 120);
-  expect((await request(server).get('/')).text).toContain('-40.0 dBm');
+  m.observe('b', 1112, -40);
+  expect((await request(server).get('/')).text).toContain('-40 dBm');
   await request(server).get('/index.html').expect(200);
   await request(server)
     .get('/style.css')
@@ -95,19 +97,19 @@ test('real HTTP returns current, escaped, server-rendered state without secrets 
     await request(server).get(path).expect(404);
   }
 });
-test('RSSI display uses ties-to-even rounding', () => {
+test('stale signal is hidden when the tag becomes absent', () => {
   m = manager();
-  m.observe('a', 1, -58, 1);
-  m.observe('a', 2, -58, 2);
-  m.observe('a', 3, -58, 3);
-  m.observe('a', 4, -59, 4);
-  expect(new WebViewService(m).render(5, 5)).toContain('-58.2 dBm');
+  m.observe('a', 1, -59);
+  const view = new WebViewService(m);
+  expect(view.render(61)).toContain('-59 dBm');
+  expect(view.render(62)).not.toContain('-59 dBm');
+  expect(view.render(62)).toContain('<td>—</td>');
 });
 
 test('Pug treats names as escaped data, including template syntax', () => {
   const name = '#{1 + 1} & <img src=x onerror="alert(1)">';
   m = manager({}, { tags: [{ ...tags[0], name }] });
-  const page = new WebViewService(m).render(5, 5);
+  const page = new WebViewService(m).render(5);
   expect(page).toContain('#{1 + 1} &amp; &lt;img');
   expect(page).not.toContain('<img');
   expect(page).not.toContain('{{rows}}');

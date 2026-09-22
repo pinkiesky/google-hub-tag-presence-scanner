@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 
 import { TrackerConfig } from '../config/config.service';
+import { TagObservationService } from '../observations/tag-observation.service';
 import { EidService, ROTATION_SECONDS } from './eid.service';
 
 @Injectable()
@@ -10,7 +11,22 @@ export class TagMatcherService {
   constructor(
     private readonly config: TrackerConfig,
     private readonly eid: EidService,
+    @Optional() private readonly observations?: TagObservationService,
   ) {}
+
+  observe(eid: Buffer, rssi: number, timestamp: number): string | null {
+    const tagId = this.match(eid, timestamp);
+
+    if (tagId !== null && !this.config.value.debugScan) {
+      if (!this.observations) {
+        throw new Error('Observation service is required outside debug scanning');
+      }
+
+      this.observations.observe({ tagId, rssi, timestamp });
+    }
+
+    return tagId;
+  }
 
   private refresh(now: number): void {
     const windows = this.config.tags.map((t) =>

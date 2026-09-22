@@ -4,7 +4,6 @@ import {
   Injectable,
   Logger,
   OnApplicationBootstrap,
-  Optional,
 } from '@nestjs/common';
 import type { Noble } from '@stoprocent/noble';
 import debounce from 'lodash/debounce';
@@ -13,13 +12,14 @@ import { TrackerConfig } from '../config/config.service';
 import { FhnParserService, isFhnUuid } from '../fhn/fhn-parser.service';
 import { TagMatcherService } from '../fhn/tag-matcher.service';
 import { LifecycleService } from '../lifecycle.service';
-import { monotonicTime, PresenceService, wallTime } from '../presence/presence.service';
+import { monotonicTime, wallTime } from '../util/time';
 import { Advertisement } from './advertisement.types';
 
 const REPORT_INTERVAL_MS = 180_000;
 
 export const NOBLE_FACTORY = Symbol('NOBLE_FACTORY');
 export type NobleFactory = (adapter: number) => Noble;
+
 export function createNoble(adapter: number): Noble {
   process.env.NOBLE_REPORT_ALL_HCI_EVENTS = '1';
   // Lazy import: no native Bluetooth initialization in unit tests or DI construction.
@@ -29,6 +29,7 @@ export function createNoble(adapter: number): Noble {
 
   return withBindings('hci', { hciDriver: 'native', deviceId: adapter, userChannel: false });
 }
+
 export async function bounded<T>(
   operation: Promise<T>,
   milliseconds: number,
@@ -59,6 +60,7 @@ export async function bounded<T>(
     }
   }
 }
+
 @Injectable()
 export class BluetoothService implements OnApplicationBootstrap, BeforeApplicationShutdown {
   private noble?: Noble;
@@ -84,7 +86,6 @@ export class BluetoothService implements OnApplicationBootstrap, BeforeApplicati
     private readonly matcher: TagMatcherService,
     private readonly lifecycle: LifecycleService,
     @Inject(NOBLE_FACTORY) private readonly factory: NobleFactory,
-    @Optional() private readonly presence?: PresenceService,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -119,7 +120,7 @@ export class BluetoothService implements OnApplicationBootstrap, BeforeApplicati
         return;
       }
 
-      const tag = this.matcher.match(eid, wallTime());
+      const tag = this.matcher.observe(eid, advertisement.rssi, wallTime());
 
       if (tag === null) {
         this.counts.unmatched++;
@@ -129,8 +130,6 @@ export class BluetoothService implements OnApplicationBootstrap, BeforeApplicati
 
       if (this.config.value.debugScan) {
         this.logger.log(`Tag matched: ${tag} RSSI=${advertisement.rssi} dBm`);
-      } else {
-        this.presence!.observe(tag, wallTime(), advertisement.rssi);
       }
 
       this.counts.matched++;
@@ -164,6 +163,7 @@ export class BluetoothService implements OnApplicationBootstrap, BeforeApplicati
         clearTimeout(timer);
         reject(new Error('Scanner shutdown'));
       };
+
       const timer = setTimeout(() => {
         signal.removeEventListener('abort', cancel);
         resolve();

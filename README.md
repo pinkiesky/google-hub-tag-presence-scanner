@@ -2,8 +2,8 @@
 
 Node.js 24 / TypeScript / NestJS service for Raspberry Pi OS ARM64. One BLE scanner
 identifies Google Find Hub tags cryptographically, records presence in SQLite,
-sends Telegram absence/recovery notifications, and serves a read-only LAN page at
-`http://raspberrypi.local:15432/`. Internet is needed only for Telegram.
+exports Prometheus metrics, and serves a read-only LAN page at
+`http://raspberrypi.local:15432/`. No external service requests are made.
 
 ## Build and test
 
@@ -26,9 +26,8 @@ the Pi itself; do not copy x86 `node_modules` to ARM64. Production runs compiled
 Use `npm run format` to format the project with Prettier, or `npm run format:check`
 to check formatting without changing files. Generated files and reference fixtures are excluded.
 
-Tests use synthetic secrets, a SQLite fixture, mocked Bluetooth and
-Telegram, and a real localhost HTTP listener. No test requires real keys or sends
-Telegram messages. A restricted sandbox must permit local sockets for HTTP tests.
+Tests use synthetic secrets, a SQLite fixture, mocked Bluetooth, and a real
+localhost HTTP listener. No test requires real keys. A restricted sandbox must permit local sockets for HTTP tests.
 
 ## Configuration
 
@@ -47,16 +46,12 @@ are not valid JSON.
 | `DATABASE_PATH`                          | `/var/lib/cat-tracker/presence.sqlite3` |
 | `BLUETOOTH_ADAPTER`                      | `0` (`hci0` and `hci1` also accepted)   |
 | `PORT`                                   | `15432`                                 |
-| `ALERT_AFTER_SECONDS`                    | `3600`                                  |
 | `MISSING_AFTER_SECONDS`                  | `60`                                    |
-| `STARTUP_GRACE_SECONDS`                  | `120`                                   |
-| `WATCHDOG_INTERVAL_SECONDS`              | `30`                                    |
 | `DRIFT_WINDOWS`                          | `16` (1–32)                             |
 | `SCANNER_CYCLE_SECONDS`                  | `300`                                   |
-| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | required, except `--debug-scan`         |
 
-`@nestjs/config` loads/validates settings. Environment files are loaded by systemd;
-foreground runs use exported environment variables. The application does not
+`@nestjs/config` loads/validates settings. Foreground runs use exported environment variables; the systemd template uses
+the JSON configuration. The application does not
 silently load a working-directory `.env`. Keep EIKs in separate secret JSON files:
 `version` (1), `name`, `pair_date` (integer Unix UTC seconds), `eik_hex` (64 hex
 characters). Manufacturer/model metadata remains ignored. Invalid secrets disable
@@ -95,9 +90,7 @@ configuration on the Pi before starting:
 sudo install -o root -g cat-tracker -m 0640 /path/to/cat-a.json /etc/cat-tracker/cat-a.json
 sudo install -o root -g cat-tracker -m 0640 /path/to/cat-b.json /etc/cat-tracker/cat-b.json
 sudoedit /etc/cat-tracker/config.json
-sudoedit /etc/cat-tracker/telegram.env
 sudo chmod 0750 /etc/cat-tracker
-sudo chmod 0600 /etc/cat-tracker/telegram.env
 sudo systemctl start cat-tracker
 sudo systemctl status cat-tracker --no-pager
 sudo journalctl -u cat-tracker -f
@@ -107,7 +100,7 @@ sudo journalctl -u cat-tracker --since today
 For updates use `deploy/update_remote user@host`, then `deploy/restart_remote
 user@host`. Scripts are in-place deployments, not atomic releases. No local secret files or databases are copied by these scripts.
 
-The unit preserves `/opt/cat-tracker`, `/etc/cat-tracker/telegram.env`,
+The unit preserves `/opt/cat-tracker`,
 `/var/lib/cat-tracker`, the service user, private directory permissions, and restart
 policy. It starts after Bluetooth/network/time-sync targets, restarts after 5
 seconds, and uses Nest shutdown hooks on SIGTERM/SIGINT.
@@ -121,7 +114,7 @@ Node binary. Raw mode requires the selected adapter to be powered on. `hci1` is
 selected by `BLUETOOTH_ADAPTER=1` in the environment file.
 
 Stop the normal service before debug scanning, then run a transient unit with the
-same user/capability (this does not open SQLite, HTTP, or Telegram):
+same user/capability (this does not open SQLite or HTTP):
 
 ```sh
 sudo systemctl stop cat-tracker
@@ -150,11 +143,15 @@ and adapter permissions. Missing means not detected, not proof that a cat left.
 
 ## State storage
 
-SQLite stores last-seen timestamps, RSSI, alert confirmation, absence episodes and
-pending notifications. Keep the database across restarts to preserve timers.
-It uses WAL and FULL synchronization. Back up a live database with SQLite's
-`.backup` command. A file lock prevents two instances sharing one database.
-RSSI history is kept in memory and resets on restart.
+SQLite stores tag identity, creation time, and last-seen timestamps. Keep the
+database across restarts to preserve last-seen metrics. It uses WAL and FULL
+synchronization. Back up a live database with SQLite's `.backup` command.
+A file lock prevents two instances sharing one database. RSSI stays in memory;
+no RSSI history or Prometheus counters are persisted.
+
+Existing databases remain compatible without a destructive migration. Legacy
+columns and tables are ignored and left untouched; new databases contain only
+the presence state table.
 
 ## Tracking behavior
 
@@ -165,45 +162,74 @@ reduction, secp160r1 / P-256 public x-coordinate. Clock is
 default. Ambiguous EIDs are rejected. `@noble/curves` performs curve arithmetic and
 `node:crypto` performs AES. Known EID vectors are checked by `npm test`.
 
-Missing begins strictly **after 60 seconds**, and an alert is queued strictly
-**after 3600 seconds**. Both monotonic
-startup grace and watchdog cadence are retained. Presence is never RSSI-gated.
-The durable outbox preserves per-tag order; a failed tag does not block another.
-Delivery requires HTTP success and Telegram `ok: true`. Retries start at 30 seconds
-and cap at 15 minutes, honoring valid Telegram `retry_after`. Unsent stale absence
-messages are canceled on return; a return during an in-flight send queues recovery
-behind that send. Episode numbers protect new state from late acknowledgments.
-Recovery confirmation is durable even though current state resets on observation.
-Lost Telegram responses can still cause duplicate external delivery;
-Telegram has no sendMessage idempotency key.
+Missing begins strictly **after 60 seconds** by default, using the configured
+presence timeout. Presence is evaluated from last-seen on each page request and
+is never RSSI-gated.
 
 The page is rendered server-side from `views/index.pug`, compiled once at startup
 and supplied with a fresh display model for each request. Pug escapes dynamic
 values; no HTML strings are assembled in TypeScript. The build copies Pug templates
 to `dist/views`, and `npm run format` includes Pug via `@prettier/plugin-pug`.
 
-The page displays `Never seen` / `Present` / `Missing` labels,
-and separate `Alert sent` column. It serves `/`, `/index.html`, HEAD, and CSS, with
-LAN-only IPv4 peer checks, no-store and CSP headers. There is no status API,
-browser JavaScript, polling, automatic refresh, or frontend framework. Public and
-IPv6 peers are rejected; forwarded headers are ignored.
+The human-readable page at `/` displays only cat name, Present / Not present, and
+latest signal strength. Absent cats and cats without a signal observation since
+startup show `—`. The existing `PresenceService` is the authoritative presence
+state service; `getAllStatuses()` supplies the web layer. The page also serves
+`/index.html`, HEAD, and CSS, with LAN-only IPv4 peer checks, no-store and CSP
+headers. There is no status API, JavaScript, polling, or automatic refresh.
+Public and IPv6 peers are rejected; forwarded headers are ignored.
+
+## Prometheus metrics
+
+Matched BLE packets flow through `TagMatcherService` → `TagObservationService`,
+which directly updates `PresenceService` and `MetricsService`. `/metrics` reads
+only a dedicated [prom-client](https://github.com/siimon/prom-client) registry and
+returns its Prometheus text content type. The existing LAN access policy applies.
+No default Node/process metrics are enabled.
+
+| Metric                            | Type    | Value                                                      |
+| --------------------------------- | ------- | ---------------------------------------------------------- |
+| `cat_rssi_dbm`                    | Gauge   | Latest valid RSSI                                          |
+| `cat_rssi_samples_total`          | Counter | One per valid RSSI sample                                  |
+| `cat_rssi_offset_sum_total`       | Counter | Sum of RSSI + 120 for every valid sample                   |
+| `cat_last_seen_timestamp_seconds` | Gauge   | Latest cryptographically matched observation, Unix seconds |
+
+All labels use stable configured IDs (`tag="cat-a"`). Counters start at zero for
+all configured tags and reset on process restart; Prometheus `increase()` handles
+resets. Last-seen gauges initialize from persisted timestamps. Unknown last-seen
+and RSSI gauge series are omitted until observed, rather than inventing values or
+exporting non-finite samples. Zero counters ensure unobserved tags remain visible.
+RSSI gauges retain their latest valid value; use last-seen to assess freshness.
+
+RSSI must be finite and between -120 and +20 dBm inclusive. Values below -120
+cannot contribute to the non-negative offset counter; invalid values (including
+BLE's unavailable sentinel) are excluded from both RSSI counters and the gauge.
+Cryptographic matches still update presence and last-seen regardless of RSSI.
+No application-side average is calculated.
+
+Example queries (documentation only):
+
+```promql
+# Average RSSI over five minutes; no samples gives an undefined result
+increase(cat_rssi_offset_sum_total[5m])
+/ increase(cat_rssi_samples_total[5m]) - 120
+
+# Seconds since last observation (never-seen tags have no timestamp series)
+time() - cat_last_seen_timestamp_seconds
+
+# Not seen for more than one hour
+time() - cat_last_seen_timestamp_seconds > 3600
+
+# Tracker unavailable: up is generated by Prometheus, not this application
+up{job="cat-tracker"} == 0
+```
+
+Alerting is owned by external Prometheus infrastructure. This application only
+exports metrics; it does not schedule alerts or deliver notifications. No
+production Prometheus/Alertmanager configuration or deployment was performed.
 
 Reference APIs: [noble adapter/capability configuration](https://github.com/stoprocent/noble#multiple-adapters-linux-specific),
 [noble custom curves](https://github.com/paulmillr/noble-curves#weierstrass-custom-weierstrass-curve--ecdsa).
-
-## Telegram delivery check
-
-`telegram-probe.cjs` is an **opt-in live test**: it sends two clearly labeled
-synthetic absence/recovery messages to the configured Telegram chat. It uses an
-in-memory database and does not alter real tag state or scan BLE. Run only when
-test messages are wanted:
-
-```sh
-sudo systemd-run --unit=cat-tracker-telegram-probe --collect --wait --pipe \
-  --property=User=cat-tracker --property=Group=cat-tracker \
-  --property=EnvironmentFile=/etc/cat-tracker/telegram.env \
-  /usr/bin/node /opt/cat-tracker/scripts/telegram-probe.cjs
-```
 
 The package override for `multer` keeps Nest 11's transitive dependency on the
 patched 2.3.x-or-newer compatible release. This service exposes no upload routes.

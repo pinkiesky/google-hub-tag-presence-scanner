@@ -7,7 +7,7 @@ import { flockSync } from 'fs-ext';
 
 import { TrackerConfig } from '../config/config.service';
 import { Tag } from '../tags/tag.types';
-import { Notification, TagState } from '../tags/tag-state';
+import { TagState } from '../tags/tag-state';
 
 @Injectable()
 export class SqliteService implements OnApplicationShutdown {
@@ -30,15 +30,8 @@ export class SqliteService implements OnApplicationShutdown {
       this.db.exec(`
         CREATE TABLE IF NOT EXISTS states (
           tag_id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at REAL NOT NULL,
-          last_seen REAL, last_rssi INTEGER, alert_sent INTEGER NOT NULL DEFAULT 0,
-          missing_since REAL, episode INTEGER NOT NULL DEFAULT 0
+          last_seen REAL
         );
-        CREATE TABLE IF NOT EXISTS outbox (
-          id INTEGER PRIMARY KEY AUTOINCREMENT, tag_id TEXT NOT NULL,
-          episode INTEGER NOT NULL, kind TEXT NOT NULL, message TEXT NOT NULL,
-          attempts INTEGER NOT NULL DEFAULT 0, next_attempt REAL NOT NULL DEFAULT 0,
-          UNIQUE(tag_id, episode, kind)
-        ); PRAGMA user_version=1;
       `);
     } catch {
       if (this.lock !== undefined) {
@@ -56,19 +49,16 @@ export class SqliteService implements OnApplicationShutdown {
       () =>
         new Map(
           tags.map((tag) => {
-            const row = this.db.prepare('SELECT * FROM states WHERE tag_id=?').get(tag.id) as
-              TagState | undefined;
+            const row = this.db
+              .prepare('SELECT tag_id,name,created_at,last_seen FROM states WHERE tag_id=?')
+              .get(tag.id) as TagState | undefined;
             const state: TagState = row
-              ? { ...row, name: tag.name, alert_sent: Boolean(row.alert_sent) }
+              ? { ...row, name: tag.name }
               : {
                   tag_id: tag.id,
                   name: tag.name,
                   created_at: now,
                   last_seen: null,
-                  last_rssi: null,
-                  alert_sent: false,
-                  missing_since: null,
-                  episode: 0,
                 };
             this.save(state);
 
@@ -81,36 +71,11 @@ export class SqliteService implements OnApplicationShutdown {
   save(state: TagState): void {
     this.db
       .prepare(
-        `INSERT OR REPLACE INTO states
-      (tag_id,name,created_at,last_seen,last_rssi,alert_sent,missing_since,episode)
-      VALUES (@tag_id,@name,@created_at,@last_seen,@last_rssi,@alert_sent,@missing_since,@episode)`,
+        `INSERT INTO states (tag_id,name,created_at,last_seen)
+         VALUES (@tag_id,@name,@created_at,@last_seen)
+         ON CONFLICT(tag_id) DO UPDATE SET name=excluded.name,last_seen=excluded.last_seen`,
       )
-      .run({ ...state, alert_sent: Number(state.alert_sent) });
-  }
-
-  enqueue(state: TagState, kind: Notification['kind'], message: string): void {
-    this.db
-      .prepare('INSERT OR IGNORE INTO outbox(tag_id,episode,kind,message) VALUES(?,?,?,?)')
-      .run(state.tag_id, state.episode, kind, message);
-  }
-
-  nextNotification(now: number, active: ReadonlyMap<string, TagState>): Notification | null {
-    const rows = this.db
-      .prepare(
-        `SELECT id,tag_id,episode,kind,message,attempts FROM outbox o
-      WHERE next_attempt <= ? AND NOT EXISTS (
-        SELECT 1 FROM outbox older WHERE older.tag_id=o.tag_id AND older.id<o.id
-      ) ORDER BY id`,
-      )
-      .iterate(now) as IterableIterator<Notification>;
-
-    for (const row of rows) {
-      if (active.has(row.tag_id)) {
-        return row;
-      }
-    }
-
-    return null;
+      .run(state);
   }
 
   onApplicationShutdown(): void {

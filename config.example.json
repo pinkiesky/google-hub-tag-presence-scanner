@@ -1,8 +1,5 @@
 {
   "service": {
-    "alert_after_seconds": 3600,
-    "startup_grace_seconds": 120,
-    "watchdog_interval_seconds": 30,
     "missing_after_seconds": 60,
     "drift_windows": 16,
     "scanner_cycle_seconds": 300,

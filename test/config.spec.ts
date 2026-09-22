@@ -23,18 +23,16 @@ test('JSON config and adapter/env validation', () => {
   expect(cfg.tags).toHaveLength(1);
   expect(cfg.settings.adapter).toBe(1);
   expect(cfg.settings.port).toBe(3000);
-  expect(() => loadConfiguration({ TAG_CONFIG_PATH: path }, [])).toThrow('TELEGRAM_BOT_TOKEN');
+  expect(loadConfiguration({ TAG_CONFIG_PATH: path }, []).tags).toHaveLength(1);
 });
 test.each([
-  { WATCHDOG_INTERVAL_SECONDS: '0' },
-  { ALERT_AFTER_SECONDS: 'NaN' },
-  { STARTUP_GRACE_SECONDS: '-1' },
+  { MISSING_AFTER_SECONDS: '0' },
+  { MISSING_AFTER_SECONDS: 'NaN' },
   { DRIFT_WINDOWS: '33' },
   { DRIFT_WINDOWS: '1.5' },
   { BLUETOOTH_ADAPTER: 'bad' },
   { PORT: '65536' },
   { DATABASE_PATH: '' },
-  { ALERT_AFTER_SECONDS: '30', MISSING_AFTER_SECONDS: '60' },
 ])('invalid settings fail clearly: %j', (env) => {
   expect(() => loadConfiguration({ TAG_CONFIG_PATH: path, ...env }, ['--debug-scan'])).toThrow();
 });

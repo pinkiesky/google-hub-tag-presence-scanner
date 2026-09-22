@@ -24,7 +24,7 @@ export default tseslint.config(...tseslint.configs.recommended, {
       {
         blankLine: 'always',
         prev: '*',
-        next: ['if', 'switch', 'for', 'while', 'do', 'try'],
+        next: ['if', 'switch', 'for', 'while', 'do', 'try', 'block-like'],
       },
 
       {
@@ -41,7 +41,7 @@ export default tseslint.config(...tseslint.configs.recommended, {
 
       {
         blankLine: 'always',
-        prev: ['if', 'switch', 'for', 'while', 'do', 'try'],
+        prev: ['if', 'switch', 'for', 'while', 'do', 'try', 'block-like'],
         next: '*',
       },
     ],

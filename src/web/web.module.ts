@@ -22,6 +22,7 @@ export function allowedClient(address: string): boolean {
     (a === 169 && b === 254)
   );
 }
+
 @Module({ imports: [PresenceModule], controllers: [WebController], providers: [WebViewService] })
 export class WebModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
