@@ -6,13 +6,13 @@ import { EidService, ROTATION_SECONDS } from './eid.service';
 @Injectable()
 export class TagMatcherService {
   private windows: number[] = [];
-  private cache = new Map<string, string | null>();
+  private readonly cache = new Map<string, string>();
   constructor(
     private readonly config: TrackerConfig,
     private readonly eid: EidService,
   ) {}
 
-  refresh(now: number): void {
+  private refresh(now: number): void {
     const windows = this.config.tags.map((t) =>
       Math.floor(Math.trunc(now - t.pairDate + t.clockOffsetSeconds) / ROTATION_SECONDS),
     );
@@ -21,7 +21,7 @@ export class TagMatcherService {
       return;
     }
 
-    const cache = new Map<string, string | null>();
+    this.cache.clear();
     this.config.tags.forEach((tag, i) => {
       for (
         let delta = -this.config.settings.driftWindows;
@@ -32,16 +32,17 @@ export class TagMatcherService {
           const eid = this.eid
             .calculate(tag.eik, (windows[i] + delta) * ROTATION_SECONDS, size)
             .toString('hex');
-          cache.set(eid, cache.has(eid) ? null : tag.id);
+          this.cache.set(eid, tag.id);
         }
       }
     });
-    this.cache = cache;
     this.windows = windows;
     new Logger(TagMatcherService.name).debug('EID cache refreshed');
   }
 
-  match(eid: Buffer): string | null {
+  match(eid: Buffer, now: number): string | null {
+    this.refresh(now);
+
     return this.cache.get(eid.toString('hex')) ?? null;
   }
 }

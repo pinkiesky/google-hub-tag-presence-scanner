@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 
+import { Logger } from '@nestjs/common';
 import type { Noble } from '@stoprocent/noble';
 
 import { BluetoothService } from '../src/bluetooth/bluetooth.service';
@@ -77,6 +78,28 @@ test('transient errors back off then resume', async () => {
   await jest.advanceTimersByTimeAsync(15000);
   expect(noble.startScanningAsync).toHaveBeenCalledTimes(3);
   expect(fail).not.toHaveBeenCalled();
+});
+test('reports periodically during scanning and cancels pending reports on shutdown', async () => {
+  setup(600);
+  const log = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
+  const summaries = () =>
+    log.mock.calls.filter(([message]) => String(message).startsWith('BLE scan summary:'));
+
+  try {
+    scanner.onApplicationBootstrap();
+    await jest.advanceTimersByTimeAsync(179_000);
+    expect(summaries()).toHaveLength(0);
+    await jest.advanceTimersByTimeAsync(1000);
+    expect(summaries()).toHaveLength(1);
+    await jest.advanceTimersByTimeAsync(180_000);
+    expect(summaries()).toHaveLength(2);
+    await scanner.beforeApplicationShutdown();
+    expect(summaries()).toHaveLength(3);
+    await jest.advanceTimersByTimeAsync(180_000);
+    expect(summaries()).toHaveLength(3);
+  } finally {
+    log.mockRestore();
+  }
 });
 test('five short failures exhaust recovery', async () => {
   setup();

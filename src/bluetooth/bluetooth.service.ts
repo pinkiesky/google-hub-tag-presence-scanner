@@ -7,6 +7,7 @@ import {
   Optional,
 } from '@nestjs/common';
 import type { Noble } from '@stoprocent/noble';
+import debounce from 'lodash/debounce';
 
 import { TrackerConfig } from '../config/config.service';
 import { FhnParserService, isFhnUuid } from '../fhn/fhn-parser.service';
@@ -15,7 +16,7 @@ import { LifecycleService } from '../lifecycle.service';
 import { monotonicTime, PresenceService, wallTime } from '../presence/presence.service';
 import { Advertisement } from './advertisement.types';
 
-const REPORT_ONCE_PER_SEC = 180;
+const REPORT_INTERVAL_MS = 180_000;
 
 export const NOBLE_FACTORY = Symbol('NOBLE_FACTORY');
 export type NobleFactory = (adapter: number) => Noble;
@@ -64,6 +65,10 @@ export class BluetoothService implements OnApplicationBootstrap, BeforeApplicati
   private task?: Promise<void>;
   private readonly abort = new AbortController();
   private readonly logger = new Logger(BluetoothService.name);
+  private readonly scheduleReport = debounce(() => this.report(), REPORT_INTERVAL_MS, {
+    maxWait: REPORT_INTERVAL_MS,
+  });
+
   private scanFailed = false;
   private stoppingScan = false;
   private fatalCallback = false;
@@ -114,7 +119,7 @@ export class BluetoothService implements OnApplicationBootstrap, BeforeApplicati
         return;
       }
 
-      const tag = this.matcher.match(eid);
+      const tag = this.matcher.match(eid, wallTime());
 
       if (tag === null) {
         this.counts.unmatched++;
@@ -175,15 +180,19 @@ export class BluetoothService implements OnApplicationBootstrap, BeforeApplicati
   private async run(): Promise<void> {
     this.noble = this.factory(this.config.settings.adapter);
     const noble = this.noble;
+
     noble.removeAllListeners('warning');
     noble.on('warning', () => {
       this.scanFailed = true;
       this.logger.warn('BLE backend warning');
     });
+
     noble.on('error', () => {
       this.scanFailed = true;
     });
+
     noble.on('discover', (advertisement: Advertisement) => this.accept(advertisement));
+
     // Read state first: initializes bindings synchronously, avoiding nextTick throws.
     void noble.state;
     // noble exits immediately if its SIGINT listener is last; keep Nest in charge.
@@ -207,8 +216,6 @@ export class BluetoothService implements OnApplicationBootstrap, BeforeApplicati
       this.scanFailed = false;
 
       try {
-        this.matcher.refresh(wallTime());
-
         while (noble.state !== 'poweredOn') {
           if (monotonicTime() - started >= 30) {
             throw new Error('Adapter unavailable');
@@ -222,19 +229,13 @@ export class BluetoothService implements OnApplicationBootstrap, BeforeApplicati
         // No advertised UUID filter: FEAA may appear only in service data.
         await bounded(noble.startScanningAsync([], true), 30_000, this.abort.signal);
         this.logger.log('BLE scanner started');
-        let nextReport = monotonicTime() + REPORT_ONCE_PER_SEC;
 
         while (monotonicTime() - started < this.config.settings.scannerCycleSeconds) {
           if (this.scanFailed) {
             throw new Error('Scanner stopped unexpectedly');
           }
 
-          this.matcher.refresh(wallTime());
-
-          if (monotonicTime() >= nextReport) {
-            this.report();
-            nextReport = monotonicTime() + REPORT_ONCE_PER_SEC;
-          }
+          this.scheduleReport();
 
           await this.pause(1000);
         }
@@ -245,6 +246,8 @@ export class BluetoothService implements OnApplicationBootstrap, BeforeApplicati
           this.scanFailed = true;
         }
       } finally {
+        this.scheduleReport.cancel();
+
         if (startAttempted) {
           this.stoppingScan = true;
 

@@ -49,36 +49,33 @@ test.each([20, 32])('parser preserves frame rules for size %i', (size) => {
 test('matches both cats, drift edges, unknowns and refreshes only at rotation', () => {
   const matcher = new TagMatcherService(config(), eid),
     now = 10000 + 32 * 1024;
-  matcher.refresh(now);
 
   for (const tag of tags) {
     for (const delta of [-16, 0, 16]) {
       for (const size of [20, 32]) {
-        expect(matcher.match(eid.calculate(tag.eik, (32 + delta) * 1024, size))).toBe(tag.id);
+        expect(matcher.match(eid.calculate(tag.eik, (32 + delta) * 1024, size), now)).toBe(tag.id);
       }
     }
   }
 
-  expect(matcher.match(eid.calculate(tags[0].eik, 49 * 1024))).toBeNull();
-  expect(matcher.match(Buffer.alloc(20, 23))).toBeNull();
+  expect(matcher.match(eid.calculate(tags[0].eik, 49 * 1024), now)).toBeNull();
+  expect(matcher.match(Buffer.alloc(20, 23), now)).toBeNull();
   const spy = jest.spyOn(eid, 'calculate');
-  matcher.refresh(now + 50);
+  matcher.match(Buffer.alloc(20, 23), now + 50);
   expect(spy).not.toHaveBeenCalled();
-  matcher.refresh(now + 1024);
+  matcher.match(Buffer.alloc(20, 23), now + 1024);
   expect(spy).toHaveBeenCalled();
   spy.mockRestore();
-  expect(matcher.match(eid.calculate(tags[0].eik, 49 * 1024))).toBe('a');
+  expect(matcher.match(eid.calculate(tags[0].eik, 49 * 1024), now + 1024)).toBe('a');
 });
-test('negative clock truncation, offset, wraparound and ambiguous EIDs', () => {
+test('negative clock truncation, offset, wraparound and last tag wins for duplicate EIDs', () => {
   const tag = { ...tags[0], clockOffsetSeconds: -1024 };
   const matcher = new TagMatcherService(config({ driftWindows: 1 }, { tags: [tag] }), eid);
-  matcher.refresh(tag.pairDate - 0.5);
-  expect(matcher.match(eid.calculate(tag.eik, -1024))).toBe('a');
+  expect(matcher.match(eid.calculate(tag.eik, -1024), tag.pairDate - 0.5)).toBe('a');
   expect(eid.calculate(tag.eik, -1024)).toEqual(eid.calculate(tag.eik, 2 ** 32 - 1024));
-  const ambiguous = new TagMatcherService(
+  const duplicate = new TagMatcherService(
     config({}, { tags: [tag, { ...tag, id: 'duplicate' }] }),
     eid,
   );
-  ambiguous.refresh(tag.pairDate);
-  expect(ambiguous.match(eid.calculate(tag.eik, -1024))).toBeNull();
+  expect(duplicate.match(eid.calculate(tag.eik, -1024), tag.pairDate)).toBe('duplicate');
 });
