@@ -171,6 +171,16 @@ test('real module wiring exposes read-only metrics independently of page renderi
     contentTypeParts(actualMetrics.getContentType()),
   );
   expect(response.text).toBe(await actualMetrics.getMetrics());
+
+  for (const [name, type] of [
+    ['cat_bluetooth_adapter_up', 'gauge'],
+    ['cat_bluetooth_scanner_up', 'gauge'],
+    ['cat_bluetooth_scanner_restarts_total', 'counter'],
+  ]) {
+    expect(response.text).toContain(`# TYPE ${name} ${type}`);
+    expect(response.text).toContain(`${name}{adapter="hci0"} 0`);
+  }
+
   expect(response.text).toContain('cat_rssi_samples_total{tag="a"} 3');
   expect(response.text).toContain('cat_rssi_offset_sum_total{tag="a"} 171');
   expect(response.text).toContain('cat_rssi_dbm{tag="a"} -65');

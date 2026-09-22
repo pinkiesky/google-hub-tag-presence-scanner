@@ -35,9 +35,36 @@ export class MetricsService {
     registers: [this.registry],
   });
 
+  private readonly adapterUp = new Gauge({
+    name: 'cat_bluetooth_adapter_up',
+    help: 'Whether the configured Bluetooth adapter is powered on and usable.',
+    labelNames: ['adapter'],
+    registers: [this.registry],
+  });
+
+  private readonly scannerUp = new Gauge({
+    name: 'cat_bluetooth_scanner_up',
+    help: 'Whether BLE scanning is active.',
+    labelNames: ['adapter'],
+    registers: [this.registry],
+  });
+
+  private readonly scannerRestarts = new Counter({
+    name: 'cat_bluetooth_scanner_restarts_total',
+    help: 'Automatic BLE scan restart attempts after unexpected failures.',
+    labelNames: ['adapter'],
+    registers: [this.registry],
+  });
+
+  private readonly adapter: string;
+
   private readonly tags: Set<string>;
 
   constructor(presence: PresenceService) {
+    this.adapter = `hci${presence.settings.adapter}`;
+    this.adapterUp.labels(this.adapter).set(0);
+    this.scannerUp.labels(this.adapter).set(0);
+    this.scannerRestarts.labels(this.adapter).inc(0);
     this.tags = new Set(presence.states.keys());
 
     for (const state of presence.states.values()) {
@@ -64,6 +91,18 @@ export class MetricsService {
     this.rssi.labels(tagId).set(rssi);
     this.samples.labels(tagId).inc();
     this.offsetSum.labels(tagId).inc(rssi + 120);
+  }
+
+  setBluetoothAdapterUp(up: boolean): void {
+    this.adapterUp.labels(this.adapter).set(Number(up));
+  }
+
+  setBluetoothScannerUp(up: boolean): void {
+    this.scannerUp.labels(this.adapter).set(Number(up));
+  }
+
+  recordBluetoothScannerRestart(): void {
+    this.scannerRestarts.labels(this.adapter).inc();
   }
 
   getMetrics(): Promise<string> {

@@ -40,15 +40,15 @@ Relative secret paths resolve against the configuration file. JSON may be
 and environment variables override service settings. Comments and trailing commas
 are not valid JSON.
 
-| Variable                                 | Default                                 |
-| ---------------------------------------- | --------------------------------------- |
-| `TAG_CONFIG_PATH`                        | `/etc/cat-tracker/config.json`          |
-| `DATABASE_PATH`                          | `/var/lib/cat-tracker/presence.sqlite3` |
-| `BLUETOOTH_ADAPTER`                      | `0` (`hci0` and `hci1` also accepted)   |
-| `PORT`                                   | `15432`                                 |
-| `MISSING_AFTER_SECONDS`                  | `60`                                    |
-| `DRIFT_WINDOWS`                          | `16` (1–32)                             |
-| `SCANNER_CYCLE_SECONDS`                  | `300`                                   |
+| Variable                | Default                                 |
+| ----------------------- | --------------------------------------- |
+| `TAG_CONFIG_PATH`       | `/etc/cat-tracker/config.json`          |
+| `DATABASE_PATH`         | `/var/lib/cat-tracker/presence.sqlite3` |
+| `BLUETOOTH_ADAPTER`     | `0` (`hci0` and `hci1` also accepted)   |
+| `PORT`                  | `15432`                                 |
+| `MISSING_AFTER_SECONDS` | `60`                                    |
+| `DRIFT_WINDOWS`         | `16` (1–32)                             |
+| `SCANNER_CYCLE_SECONDS` | `300`                                   |
 
 `@nestjs/config` loads/validates settings. Foreground runs use exported environment variables; the systemd template uses
 the JSON configuration. The application does not
@@ -233,3 +233,23 @@ Reference APIs: [noble adapter/capability configuration](https://github.com/stop
 
 The package override for `multer` keeps Nest 11's transitive dependency on the
 patched 2.3.x-or-newer compatible release. This service exposes no upload routes.
+
+## Bluetooth health metrics
+
+The existing `/metrics` endpoint also exports three series labeled with the
+configured adapter (`adapter="hci0"`, or e.g. `hci1`):
+
+- `cat_bluetooth_adapter_up` (gauge): 1 when Noble reports `poweredOn`, otherwise 0.
+- `cat_bluetooth_scanner_up` (gauge): 1 only after scanning starts successfully;
+  stops, errors, adapter loss, and shutdown set it to 0.
+- `cat_bluetooth_scanner_restarts_total` (counter): automatic scan-start attempts
+  after unexpected failures. Initial startup and scheduled scan refreshes do not
+  count. Waiting for an unavailable adapter does not count until scan start is
+  attempted. The counter resets only with the process.
+
+All three initialize to zero. Adapter and scanner gauges are independent: a
+powered-on adapter can have a failed scanner. Prometheus `up == 0` indicates a
+scrape/service/network problem; adapter down indicates an adapter/BlueZ issue;
+adapter up with scanner down indicates a scanning issue. Both gauges up with a
+stale tag timestamp suggests the tag is absent or out of range, but cannot prove
+radio reception is working. The restart counter is not a health gauge.
