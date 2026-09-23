@@ -129,8 +129,9 @@ sudo systemctl start cat-tracker
 
 The standalone scanner prints each matched tag ID and RSSI to stdout. It reads
 the normal tag configuration, but opens neither SQLite nor HTTP. Neither raw
-packets nor EIKs are logged. Scanning has no advertised UUID filter and allows duplicates;
-FEAA may exist only in service data. Noble is configured to report advertisements
+packets nor EIKs are logged. Scanning filters for FEAA and allows duplicates;
+noble's HCI backend matches FEAA in service data as well as advertised UUIDs.
+Noble is configured to report advertisements
 without waiting for scan responses. Extended advertisements are auto-detected by
 noble; 32-byte EID reception requires a capable adapter. Parser/crypto support both
 20- and 32-byte EIDs regardless of radio support.

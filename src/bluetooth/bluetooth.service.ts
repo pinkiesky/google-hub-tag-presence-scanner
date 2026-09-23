@@ -4,7 +4,6 @@ import {
   Injectable,
   Logger,
   OnApplicationBootstrap,
-  Optional,
 } from '@nestjs/common';
 import type { Noble } from '@stoprocent/noble';
 import debounce from 'lodash/debounce';
@@ -90,7 +89,7 @@ export class BluetoothService implements OnApplicationBootstrap, BeforeApplicati
     private readonly matcher: TagMatcherService,
     private readonly lifecycle: LifecycleService,
     @Inject(NOBLE_FACTORY) private readonly factory: NobleFactory,
-    @Optional() private readonly metrics?: MetricsService,
+    private readonly metrics: MetricsService,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -119,7 +118,7 @@ export class BluetoothService implements OnApplicationBootstrap, BeforeApplicati
     }
 
     this.adapterAvailable = available;
-    this.metrics?.setBluetoothAdapterUp(available);
+    this.metrics.setBluetoothAdapterUp(available);
 
     if (!available) {
       this.scanFailed = true;
@@ -263,12 +262,11 @@ export class BluetoothService implements OnApplicationBootstrap, BeforeApplicati
         startAttempted = true;
 
         if (recovering) {
-          this.metrics?.recordBluetoothScannerRestart();
+          this.metrics.recordBluetoothScannerRestart();
           this.logger.log('Restarting BLE scanner');
         }
 
-        // No advertised UUID filter: FEAA may appear only in service data.
-        await bounded(noble.startScanningAsync([], true), 30_000, this.abort.signal);
+        await bounded(noble.startScanningAsync(['feaa'], true), 30_000, this.abort.signal);
 
         // A state/stop/error event may arrive while the start promise is pending.
         if (

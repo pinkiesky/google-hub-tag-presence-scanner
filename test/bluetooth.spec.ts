@@ -52,13 +52,13 @@ afterEach(async () => {
   presence?.store.onApplicationShutdown();
   jest.useRealTimers();
 });
-test('one scanner, unfiltered service data and both real matching paths', async () => {
+test('one FEAA-filtered scanner and both real matching paths', async () => {
   const factory = setup();
   scanner.onApplicationBootstrap();
   await jest.advanceTimersByTimeAsync(0);
   expect(factory).toHaveBeenCalledTimes(1);
   expect(factory).toHaveBeenCalledWith(0);
-  expect(noble.startScanningAsync).toHaveBeenCalledWith([], true);
+  expect(noble.startScanningAsync).toHaveBeenCalledWith(['feaa'], true);
 
   for (const tag of tags) {
     const eid = new EidService().calculate(tag.eik, 2048);

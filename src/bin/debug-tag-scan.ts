@@ -65,9 +65,8 @@ async function main(): Promise<void> {
       await bounded(ready, 30_000);
     }
 
-    // FEAA can appear only in service data, so scan without a UUID filter.
     scanAttempted = true;
-    await bounded(noble.startScanningAsync([], true), 30_000);
+    await bounded(noble.startScanningAsync(['feaa'], true), 30_000);
     const result = await done;
 
     if (result) {
