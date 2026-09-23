@@ -1,4 +1,4 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 
 import { TrackerConfig } from '../config/config.service';
 import { TagObservationService } from '../observations/tag-observation.service';
@@ -17,9 +17,9 @@ export class TagMatcherService {
   observe(eid: Buffer, rssi: number, timestamp: number): string | null {
     const tagId = this.match(eid, timestamp);
 
-    if (tagId !== null && !this.config.value.debugScan) {
+    if (tagId !== null) {
       if (!this.observations) {
-        throw new Error('Observation service is required outside debug scanning');
+        throw new Error('Observation service is required');
       }
 
       this.observations.observe({ tagId, rssi, timestamp });
@@ -53,7 +53,6 @@ export class TagMatcherService {
       }
     });
     this.windows = windows;
-    new Logger(TagMatcherService.name).debug('EID cache refreshed');
   }
 
   match(eid: Buffer, now: number): string | null {

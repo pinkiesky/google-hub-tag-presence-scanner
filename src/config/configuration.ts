@@ -16,7 +16,6 @@ export interface Settings {
 export interface Configuration {
   readonly settings: Settings;
   readonly tags: readonly Tag[];
-  readonly debugScan: boolean;
 }
 
 function object(value: unknown): Record<string, unknown> {
@@ -31,7 +30,6 @@ function readConfiguration(
   env: NodeJS.ProcessEnv = process.env,
   args = process.argv.slice(2),
 ): Configuration {
-  const debugScan = args.includes('--debug-scan');
   const configIndex = args.indexOf('--config');
 
   if (configIndex >= 0 && !args[configIndex + 1]) {
@@ -172,7 +170,7 @@ function readConfiguration(
     throw new Error('No usable tags configured');
   }
 
-  return Object.freeze({ settings, tags: Object.freeze(tags), debugScan });
+  return Object.freeze({ settings, tags: Object.freeze(tags) });
 }
 
 export class ConfigurationError extends Error {}

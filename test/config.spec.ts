@@ -18,7 +18,7 @@ afterEach(() => rmSync(directory, { recursive: true, force: true }));
 test('JSON config and adapter/env validation', () => {
   const cfg = loadConfiguration(
     { TAG_CONFIG_PATH: path, BLUETOOTH_ADAPTER: 'hci1', PORT: '3000' },
-    ['--debug-scan'],
+    [],
   );
   expect(cfg.tags).toHaveLength(1);
   expect(cfg.settings.adapter).toBe(1);
@@ -34,7 +34,7 @@ test.each([
   { PORT: '65536' },
   { DATABASE_PATH: '' },
 ])('invalid settings fail clearly: %j', (env) => {
-  expect(() => loadConfiguration({ TAG_CONFIG_PATH: path, ...env }, ['--debug-scan'])).toThrow();
+  expect(() => loadConfiguration({ TAG_CONFIG_PATH: path, ...env }, [])).toThrow();
 });
 test('JSON service settings, CLI path precedence and invalid-secret isolation', () => {
   writeFileSync(join(directory, 'bad.json'), '{"eik_hex":"SECRET"}');
@@ -51,7 +51,6 @@ test('JSON service settings, CLI path precedence and invalid-secret isolation', 
   const cfg = loadConfiguration({ TAG_CONFIG_PATH: '/not-used.json', PORT: '3000' }, [
     '--config',
     path,
-    '--debug-scan',
   ]);
   expect(cfg.tags.map((t) => t.id)).toEqual(['good']);
   expect(cfg.settings.adapter).toBe(1);
@@ -62,7 +61,7 @@ test.each(['[service]\nadapter="hci0"', '{"tags": SECRET}', '{"tags": [],}'])(
   'rejects non-JSON configuration without leaking input',
   (text) => {
     writeFileSync(path, text);
-    expect(() => loadConfiguration({ TAG_CONFIG_PATH: path }, ['--debug-scan'])).toThrow(
+    expect(() => loadConfiguration({ TAG_CONFIG_PATH: path }, [])).toThrow(
       'Cannot read tag configuration (expected valid JSON)',
     );
   },
@@ -75,9 +74,7 @@ test('duplicate IDs fail and all-invalid secrets fail', () => {
       { id: 'a', secret_file: 'good.json' },
     ]),
   );
-  expect(() => loadConfiguration({ TAG_CONFIG_PATH: path }, ['--debug-scan'])).toThrow('duplicate');
+  expect(() => loadConfiguration({ TAG_CONFIG_PATH: path }, [])).toThrow('duplicate');
   writeFileSync(path, JSON.stringify([{ id: 'a', secret_file: 'missing.json' }]));
-  expect(() => loadConfiguration({ TAG_CONFIG_PATH: path }, ['--debug-scan'])).toThrow(
-    'No usable tags',
-  );
+  expect(() => loadConfiguration({ TAG_CONFIG_PATH: path }, [])).toThrow('No usable tags');
 });

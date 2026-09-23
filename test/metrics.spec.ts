@@ -141,7 +141,7 @@ class TestConfigModule {}
 
 test('real module wiring exposes read-only metrics independently of page rendering', async () => {
   const module = await Test.createTestingModule({
-    imports: [TestConfigModule, FhnModule.register(false), WebModule],
+    imports: [TestConfigModule, FhnModule, WebModule],
   }).compile();
   app = module.createNestApplication();
   await app.listen(0, '127.0.0.1');
@@ -197,22 +197,4 @@ test('real module wiring exposes read-only metrics independently of page renderi
   expect(crypto).not.toHaveBeenCalled();
   expect(observe).not.toHaveBeenCalled();
   expect(app.get(PresenceService).getAllStatuses(timestamp)[0].signalDbm).toBe(-65);
-});
-
-test('debug matcher module never opens persistence or exposes metrics', async () => {
-  const module = await Test.createTestingModule({
-    imports: [TestConfigModule, FhnModule.register(true)],
-  })
-    .overrideProvider(TrackerConfig)
-    .useValue(config({}, { debugScan: true }))
-    .compile();
-
-  try {
-    expect(() => module.get(SqliteService)).toThrow();
-    expect(() => module.get(MetricsService)).toThrow();
-    const eid = new EidService().calculate(tags[0].eik, 2048);
-    expect(module.get(TagMatcherService).observe(eid, -63, 12048)).toBe('a');
-  } finally {
-    await module.close();
-  }
 });

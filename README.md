@@ -122,14 +122,14 @@ sudo systemd-run --unit=cat-tracker-debug --collect --wait --pty \
   --property=User=cat-tracker --property=Group=cat-tracker \
   --property=AmbientCapabilities=CAP_NET_RAW \
   --property=CapabilityBoundingSet=CAP_NET_RAW \
-  /usr/bin/node /opt/cat-tracker/dist/main.js --debug-scan
+  /opt/cat-tracker/bin/debug-tag-scan
 # Ctrl-C ends the scan. Restore the service afterwards:
 sudo systemctl start cat-tracker
 ```
 
-Debug output reports matched IDs and RSSI. Normal logs summarize counts every 30
-seconds; `--debug` enables individual matched observations. Neither raw packets
-nor EIKs are logged. Scanning has no advertised UUID filter and allows duplicates;
+The standalone scanner prints each matched tag ID and RSSI to stdout. It reads
+the normal tag configuration, but opens neither SQLite nor HTTP. Neither raw
+packets nor EIKs are logged. Scanning has no advertised UUID filter and allows duplicates;
 FEAA may exist only in service data. Noble is configured to report advertisements
 without waiting for scan responses. Extended advertisements are auto-detected by
 noble; 32-byte EID reception requires a capable adapter. Parser/crypto support both

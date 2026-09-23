@@ -158,10 +158,6 @@ export class BluetoothService implements OnApplicationBootstrap, BeforeApplicati
         return;
       }
 
-      if (this.config.value.debugScan) {
-        this.logger.log(`Tag matched: ${tag} RSSI=${advertisement.rssi} dBm`);
-      }
-
       this.counts.matched++;
       this.latestRssi.set(tag, advertisement.rssi);
     } catch {

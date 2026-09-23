@@ -21,7 +21,7 @@ remote_root() {
 copy_project() {
     remote_root <<'REMOTE'
 command -v rsync >/dev/null || { echo 'Install rsync on the remote host first.' >&2; exit 1; }
-install -d -m 0755 /opt/cat-tracker/src /opt/cat-tracker/deploy
+install -d -m 0755 /opt/cat-tracker/src /opt/cat-tracker/deploy /opt/cat-tracker/bin
 REMOTE
     rsync -az --rsync-path='sudo -n rsync' --chmod=D755,F644 \
         "$PROJECT_DIR/package.json" "$PROJECT_DIR/package-lock.json" \
@@ -40,4 +40,6 @@ REMOTE
         rsync -az --delete --rsync-path='sudo -n rsync' --chmod=D755,F644 \
             "$PROJECT_DIR/$directory/" "$REMOTE:/opt/cat-tracker/$directory/"
     done
+    rsync -az --delete --rsync-path='sudo -n rsync' --chmod=D755,F755 \
+        "$PROJECT_DIR/bin/" "$REMOTE:/opt/cat-tracker/bin/"
 }

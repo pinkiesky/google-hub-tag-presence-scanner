@@ -52,6 +52,5 @@ export class PresenceService {
 
     state.last_seen = now;
     this.store.save(state);
-    this.logger.debug(`Tag matched: ${id} RSSI=${rssi} dBm`);
   }
 }

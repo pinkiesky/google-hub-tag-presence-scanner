@@ -31,7 +31,6 @@ export function config(
       ...settings,
     },
     tags,
-    debugScan: false,
     ...overrides,
   };
 

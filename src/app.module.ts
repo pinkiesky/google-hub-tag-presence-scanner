@@ -10,15 +10,10 @@ import { WebModule } from './web/web.module';
 class LifecycleModule {}
 @Module({})
 export class AppModule {
-  static register(debugScan = false): DynamicModule {
+  static register(): DynamicModule {
     return {
       module: AppModule,
-      imports: [
-        TrackerConfigModule,
-        LifecycleModule,
-        BluetoothModule.register(debugScan),
-        ...(debugScan ? [] : [WebModule]),
-      ],
+      imports: [TrackerConfigModule, LifecycleModule, BluetoothModule, WebModule],
     };
   }
 }
