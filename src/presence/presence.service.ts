@@ -53,4 +53,8 @@ export class PresenceService {
     state.last_seen = now;
     this.store.save(state);
   }
+
+  ifTagExists(id: string): boolean {
+    return this.states.has(id);
+  }
 }

@@ -1,4 +1,4 @@
-import { Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 
 import { TrackerConfig } from '../config/config.service';
 import { TagObservationService } from '../observations/tag-observation.service';
@@ -8,20 +8,18 @@ import { EidService, ROTATION_SECONDS } from './eid.service';
 export class TagMatcherService {
   private windows: number[] = [];
   private readonly cache = new Map<string, string>();
+
   constructor(
     private readonly config: TrackerConfig,
     private readonly eid: EidService,
-    @Optional() private readonly observations?: TagObservationService,
+    @Inject(TagObservationService)
+    private readonly observations: Pick<TagObservationService, 'observe'>,
   ) {}
 
   observe(eid: Buffer, rssi: number, timestamp: number): string | null {
     const tagId = this.match(eid, timestamp);
 
     if (tagId !== null) {
-      if (!this.observations) {
-        throw new Error('Observation service is required');
-      }
-
       this.observations.observe({ tagId, rssi, timestamp });
     }
 

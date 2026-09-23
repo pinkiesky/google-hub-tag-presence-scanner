@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 
 import { MetricsService } from '../metrics/metrics.service';
 import { PresenceService } from '../presence/presence.service';
@@ -12,6 +12,8 @@ export interface TagObservation {
 
 @Injectable()
 export class TagObservationService {
+  private readonly logger = new Logger(TagObservationService.name);
+
   constructor(
     private readonly presence: PresenceService,
     private readonly metrics: MetricsService,
@@ -20,7 +22,13 @@ export class TagObservationService {
   observe(observation: TagObservation): void {
     const { tagId, rssi, timestamp } = observation;
 
-    if (!this.presence.states.has(tagId) || !Number.isFinite(timestamp) || timestamp < 0) {
+    if (!this.presence.ifTagExists(tagId)) {
+      this.logger.log(`Logger ${tagId} not found`);
+
+      return;
+    }
+
+    if (!Number.isFinite(timestamp) || timestamp < 0) {
       return;
     }
 

@@ -47,7 +47,7 @@ test.each([20, 32])('parser preserves frame rules for size %i', (size) => {
   ).toBeNull();
 });
 test('matches both cats, drift edges, unknowns and refreshes only at rotation', () => {
-  const matcher = new TagMatcherService(config(), eid),
+  const matcher = new TagMatcherService(config(), eid, { observe: jest.fn() }),
     now = 10000 + 32 * 1024;
 
   for (const tag of tags) {
@@ -70,12 +70,15 @@ test('matches both cats, drift edges, unknowns and refreshes only at rotation', 
 });
 test('negative clock truncation, offset, wraparound and last tag wins for duplicate EIDs', () => {
   const tag = { ...tags[0], clockOffsetSeconds: -1024 };
-  const matcher = new TagMatcherService(config({ driftWindows: 1 }, { tags: [tag] }), eid);
+  const matcher = new TagMatcherService(config({ driftWindows: 1 }, { tags: [tag] }), eid, {
+    observe: jest.fn(),
+  });
   expect(matcher.match(eid.calculate(tag.eik, -1024), tag.pairDate - 0.5)).toBe('a');
   expect(eid.calculate(tag.eik, -1024)).toEqual(eid.calculate(tag.eik, 2 ** 32 - 1024));
   const duplicate = new TagMatcherService(
     config({}, { tags: [tag, { ...tag, id: 'duplicate' }] }),
     eid,
+    { observe: jest.fn() },
   );
   expect(duplicate.match(eid.calculate(tag.eik, -1024), tag.pairDate)).toBe('duplicate');
 });

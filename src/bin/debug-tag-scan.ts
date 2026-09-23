@@ -16,7 +16,7 @@ async function main(): Promise<void> {
   const configuration = loadConfiguration(process.env, process.argv.slice(2));
   const config = new TrackerConfig(new ConfigService({ tracker: configuration }));
   const parser = new FhnParserService();
-  const matcher = new TagMatcherService(config, new EidService());
+  const matcher = new TagMatcherService(config, new EidService(), { observe: () => undefined });
   const noble = createNoble(configuration.settings.adapter);
 
   let scanAttempted = false;
