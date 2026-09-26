@@ -23,6 +23,7 @@ test('JSON config and adapter/env validation', () => {
   expect(cfg.tags).toHaveLength(1);
   expect(cfg.settings.adapter).toBe(1);
   expect(cfg.settings.port).toBe(3000);
+  expect(cfg.settings.udpPort).toBe(15433);
   expect(loadConfiguration({ TAG_CONFIG_PATH: path }, []).tags).toHaveLength(1);
 });
 test.each([
@@ -32,6 +33,9 @@ test.each([
   { DRIFT_WINDOWS: '1.5' },
   { BLUETOOTH_ADAPTER: 'bad' },
   { PORT: '65536' },
+  { UDP_PORT: '0' },
+  { UDP_PORT: '65536' },
+  { UDP_PORT: '1.5' },
   { DATABASE_PATH: '' },
 ])('invalid settings fail clearly: %j', (env) => {
   expect(() => loadConfiguration({ TAG_CONFIG_PATH: path, ...env }, [])).toThrow();
@@ -41,7 +45,7 @@ test('JSON service settings, CLI path precedence and invalid-secret isolation', 
   writeFileSync(
     path,
     JSON.stringify({
-      service: { adapter: 'hci1', drift_windows: 2, port: 12345 },
+      service: { adapter: 'hci1', drift_windows: 2, port: 12345, udp_port: 15555 },
       tags: [
         { id: 'good', secret_file: 'good.json' },
         { id: 'bad', secret_file: 'bad.json' },
@@ -56,6 +60,7 @@ test('JSON service settings, CLI path precedence and invalid-secret isolation', 
   expect(cfg.settings.adapter).toBe(1);
   expect(cfg.settings.driftWindows).toBe(2);
   expect(cfg.settings.port).toBe(3000);
+  expect(cfg.settings.udpPort).toBe(15555);
 });
 test.each(['[service]\nadapter="hci0"', '{"tags": SECRET}', '{"tags": [],}'])(
   'rejects non-JSON configuration without leaking input',

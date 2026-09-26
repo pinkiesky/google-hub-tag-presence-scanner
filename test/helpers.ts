@@ -28,6 +28,7 @@ export function config(
       adapter: 0,
       database: ':memory:',
       port: 15432,
+      udpPort: 15433,
       ...settings,
     },
     tags,

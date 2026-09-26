@@ -46,6 +46,7 @@ are not valid JSON.
 | `DATABASE_PATH`         | `/var/lib/cat-tracker/presence.sqlite3` |
 | `BLUETOOTH_ADAPTER`     | `0` (`hci0` and `hci1` also accepted)   |
 | `PORT`                  | `15432`                                 |
+| `UDP_PORT`              | `15433`                                 |
 | `MISSING_AFTER_SECONDS` | `60`                                    |
 | `DRIFT_WINDOWS`         | `16` (1–32)                             |
 | `SCANNER_CYCLE_SECONDS` | `300`                                   |
@@ -58,6 +59,52 @@ characters). Manufacturer/model metadata remains ignored. Invalid secrets disabl
 only that tag; no usable tags, duplicate IDs, or invalid global
 settings fail startup. Secret contents and paths are never logged or rendered.
 Keep IDs stable: changing an ID starts a new presence timer.
+
+## UDP satellite input
+
+The service listens on UDP port `15433` on all IPv4 interfaces. Set `UDP_PORT` or
+`service.udp_port` to change it. It parses CatTag satellite frame version 5:
+
+| Offset | Size     | Field                                 |
+| ------ | -------- | ------------------------------------- |
+| 0      | 1        | Magic (`CA`)                          |
+| 1      | 1        | Version (`5`)                         |
+| 2      | 2        | Satellite ID (big endian)             |
+| 4      | 8        | Boot ID (big endian)                  |
+| 12     | 8        | Sequence (big endian, starts at zero) |
+| 20     | 2        | Service UUID (`FE AA`)                |
+| 22     | 6        | Address bytes as sent                 |
+| 28     | 1        | Service-data length                   |
+| 29     | Variable | Unmodified service-data bytes         |
+
+The declared length must match the datagram exactly. Valid frames produce a log line
+with the sender, satellite ID, boot ID, sequence, address, and up to 64 service-data bytes in hex.
+Invalid frames produce a warning. The receiver does not yet update tag presence or
+metrics. To send a sample frame locally:
+
+```sh
+node - <<'JS'
+const data = Buffer.from([0x40, 0x01, 0x02]);
+const frame = Buffer.alloc(29 + data.length);
+frame[0] = 0xca;
+frame[1] = 5;
+frame.writeUInt16BE(1, 2);
+frame.writeBigUInt64BE(1n, 4);
+frame.writeBigUInt64BE(0n, 12);
+frame.writeUInt16BE(0xfeaa, 20);
+Buffer.from([1, 2, 3, 4, 5, 6]).copy(frame, 22);
+frame[28] = data.length;
+data.copy(frame, 29);
+const socket = require('node:dgram').createSocket('udp4');
+socket.send(frame, 15433, '127.0.0.1', () => socket.close());
+JS
+```
+
+Watch the service log with `sudo journalctl -u cat-tracker -f`.
+
+The receiver starts alongside the local BLE scanner. A working Bluetooth adapter
+is required for the application to keep running. If you have a local
+`config.dev.json`, you can start it with `node dist/main.js --config config.dev.json`.
 
 ## Raspberry Pi installation
 

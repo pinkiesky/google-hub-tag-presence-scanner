@@ -12,6 +12,7 @@ export interface Settings {
   readonly adapter: number;
   readonly database: string;
   readonly port: number;
+  readonly udpPort: number;
 }
 export interface Configuration {
   readonly settings: Settings;
@@ -46,7 +47,8 @@ function readConfiguration(
     const text = readFileSync(path, 'utf8');
     const parsed: unknown = JSON.parse(text);
     raw = Array.isArray(parsed) ? { tags: parsed } : object(parsed);
-  } catch {
+  } catch (err) {
+    console.error(err);
     throw new Error('Cannot read tag configuration (expected valid JSON)');
   }
 
@@ -87,6 +89,7 @@ function readConfiguration(
     adapter: Number(adapter.replace(/^hci/, '')),
     database,
     port: number('PORT', 'port', 15432),
+    udpPort: number('UDP_PORT', 'udp_port', 15433),
   });
 
   if (!Number.isInteger(settings.driftWindows) || settings.driftWindows > 32) {
@@ -95,6 +98,10 @@ function readConfiguration(
 
   if (!Number.isInteger(settings.port) || settings.port > 65535) {
     throw new Error('Invalid PORT');
+  }
+
+  if (!Number.isInteger(settings.udpPort) || settings.udpPort > 65535) {
+    throw new Error('Invalid UDP_PORT');
   }
 
   if (!Number.isSafeInteger(settings.adapter) || !settings.database.trim()) {
