@@ -74,18 +74,33 @@ The service listens on UDP port `15433` on all IPv4 interfaces. Set `UDP_PORT` o
 | 12     | 8        | Sequence (big endian, starts at zero) |
 | 20     | 2        | Service UUID (`FE AA`)                |
 | 22     | 6        | Address bytes as sent                 |
-| 28     | 1        | Service-data length                   |
-| 29     | Variable | Unmodified service-data bytes         |
+| 28     | 1        | RSSI (signed int8, dBm)               |
+| 29     | 1        | Service-data length                   |
+| 30     | Variable | Unmodified service-data bytes         |
 
 The declared length must match the datagram exactly. Valid frames produce a log line
-with the sender, satellite ID, boot ID, sequence, address, and up to 64 service-data bytes in hex.
-Invalid frames produce a warning. The receiver does not yet update tag presence or
-metrics. To send a sample frame locally:
+with the sender, satellite ID, boot ID, sequence, address, RSSI, and up to 64 service-data bytes in hex.
+Invalid frames produce a warning. Valid Find Hub service data is decoded to an EID
+and passed to `TagMatcherService.observe`. A cryptographic match updates presence
+and the last-seen metric using the server's receive time.
+
+Sequence numbers must strictly increase for each satellite ID and boot ID pair.
+Duplicates and older packets are ignored; gaps are allowed. The first received
+sequence may be any value, including zero. A new boot ID starts a new sequence
+stream. Sequence tracking is in memory and resets when the server restarts.
+
+The latest matched observation supplies `sourceName`: `satellite:<id>` for UDP or
+`ble:hci<adapter>` for local scanning. The source is saved with last-seen and shown
+on the presence page, including after the tag becomes absent. RSSI is decoded from a signed
+two's-complement byte and uses the same signal validation and metrics as local
+BLE observations. Invalid RSSI still allows a matched packet to update presence.
+
+To send a sample frame locally (presence updates require a configured tag's EID):
 
 ```sh
 node - <<'JS'
-const data = Buffer.from([0x40, 0x01, 0x02]);
-const frame = Buffer.alloc(29 + data.length);
+const data = Buffer.concat([Buffer.from([0x40]), Buffer.alloc(20)]);
+const frame = Buffer.alloc(30 + data.length);
 frame[0] = 0xca;
 frame[1] = 5;
 frame.writeUInt16BE(1, 2);
@@ -93,8 +108,9 @@ frame.writeBigUInt64BE(1n, 4);
 frame.writeBigUInt64BE(0n, 12);
 frame.writeUInt16BE(0xfeaa, 20);
 Buffer.from([1, 2, 3, 4, 5, 6]).copy(frame, 22);
-frame[28] = data.length;
-data.copy(frame, 29);
+frame.writeInt8(-63, 28);
+frame[29] = data.length;
+data.copy(frame, 30);
 const socket = require('node:dgram').createSocket('udp4');
 socket.send(frame, 15433, '127.0.0.1', () => socket.close());
 JS
@@ -191,7 +207,10 @@ and adapter permissions. Missing means not detected, not proof that a cat left.
 
 ## State storage
 
-SQLite stores tag identity, creation time, and last-seen timestamps. Keep the
+SQLite stores tag identity, creation time, last-seen timestamps, and the latest
+observation source. `sourceName` is required for every observation, status, and
+stored state. Unobserved tags and older rows without a source use `unknown`.
+Database migration fills missing sources and enforces nonempty values for future writes. Keep the
 database across restarts to preserve last-seen metrics. It uses WAL and FULL
 synchronization. Back up a live database with SQLite's `.backup` command.
 A file lock prevents two instances sharing one database. RSSI stays in memory;
@@ -219,8 +238,8 @@ and supplied with a fresh display model for each request. Pug escapes dynamic
 values; no HTML strings are assembled in TypeScript. The build copies Pug templates
 to `dist/views`, and `npm run format` includes Pug via `@prettier/plugin-pug`.
 
-The human-readable page at `/` displays only cat name, Present / Not present, and
-latest signal strength. Absent cats and cats without a signal observation since
+The human-readable page at `/` displays cat name, Present / Not present, latest
+signal strength, and presence source. Absent cats and cats without a signal observation since
 startup show `—`. The existing `PresenceService` is the authoritative presence
 state service; `getAllStatuses()` supplies the web layer. The page also serves
 `/index.html`, HEAD, and CSS, with LAN-only IPv4 peer checks, no-store and CSP
@@ -229,38 +248,36 @@ Public and IPv6 peers are rejected; forwarded headers are ignored.
 
 ## Prometheus metrics
 
-Matched BLE packets flow through `TagMatcherService` → `TagObservationService`,
+Matched local BLE and satellite UDP packets flow through `TagMatcherService` → `TagObservationService`,
 which directly updates `PresenceService` and `MetricsService`. `/metrics` reads
 only a dedicated [prom-client](https://github.com/siimon/prom-client) registry and
 returns its Prometheus text content type. The existing LAN access policy applies.
 No default Node/process metrics are enabled.
 
-| Metric                            | Type    | Value                                                      |
-| --------------------------------- | ------- | ---------------------------------------------------------- |
-| `cat_rssi_dbm`                    | Gauge   | Latest valid RSSI                                          |
-| `cat_rssi_samples_total`          | Counter | One per valid RSSI sample                                  |
-| `cat_rssi_offset_sum_total`       | Counter | Sum of RSSI + 120 for every valid sample                   |
-| `cat_last_seen_timestamp_seconds` | Gauge   | Latest cryptographically matched observation, Unix seconds |
+| Metric                                   | Type  | Labels          | Value                                                      |
+| ---------------------------------------- | ----- | --------------- | ---------------------------------------------------------- |
+| `cat_rssi_dbm`                           | Gauge | `tag`, `source` | Latest valid RSSI                                          |
+| `cat_last_seen_timestamp_seconds`        | Gauge | `tag`           | Latest cryptographically matched observation, Unix seconds |
+| `cat_source_last_seen_timestamp_seconds` | Gauge | `tag`, `source` | Latest matched observation from that source, Unix seconds  |
 
-All labels use stable configured IDs (`tag="cat-a"`). Counters start at zero for
-all configured tags and reset on process restart; Prometheus `increase()` handles
-resets. Last-seen gauges initialize from persisted timestamps. Unknown last-seen
-and RSSI gauge series are omitted until observed, rather than inventing values or
-exporting non-finite samples. Zero counters ensure unobserved tags remain visible.
-RSSI gauges retain their latest valid value; use last-seen to assess freshness.
+All labels use stable configured IDs (`tag="cat-a"`). `source` is the observation's
+`sourceName` (`ble:hci<adapter>` or `satellite:<id>`). RSSI is split by source
+because signal strength from different receivers is not comparable. Last-seen gauges
+initialize from persisted timestamps; the per-source last-seen gauge is restored only
+for the persisted latest source (not `unknown`). Unknown last-seen and RSSI gauge
+series are omitted until observed, rather than inventing values or exporting
+non-finite samples. RSSI gauges retain their latest valid value; use last-seen to
+assess freshness.
 
-RSSI must be finite and between -120 and +20 dBm inclusive. Values below -120
-cannot contribute to the non-negative offset counter; invalid values (including
-BLE's unavailable sentinel) are excluded from both RSSI counters and the gauge.
-Cryptographic matches still update presence and last-seen regardless of RSSI.
-No application-side average is calculated.
+RSSI must be finite and between -120 and +20 dBm inclusive. Invalid values (including
+BLE's unavailable sentinel) are excluded from the gauge. Cryptographic matches still
+update presence and last-seen regardless of RSSI.
 
 Example queries (documentation only):
 
 ```promql
-# Average RSSI over five minutes; no samples gives an undefined result
-increase(cat_rssi_offset_sum_total[5m])
-/ increase(cat_rssi_samples_total[5m]) - 120
+# Source that saw each cat most recently
+topk by (tag) (1, cat_source_last_seen_timestamp_seconds)
 
 # Seconds since last observation (never-seen tags have no timestamp series)
 time() - cat_last_seen_timestamp_seconds
@@ -301,3 +318,28 @@ scrape/service/network problem; adapter down indicates an adapter/BlueZ issue;
 adapter up with scanner down indicates a scanning issue. Both gauges up with a
 stale tag timestamp suggests the tag is absent or out of range, but cannot prove
 radio reception is working. The restart counter is not a health gauge.
+
+## UDP packet metrics
+
+`/metrics` also exports UDP satellite counters, labeled with the numeric satellite ID
+(`satellite="7"`) where the frame header is valid:
+
+- `cat_udp_packets_received_total` (counter): frames accepted in sequence order.
+- `cat_udp_packets_lost_total` (counter): sequence numbers skipped between accepted
+  frames of the same satellite and boot ID.
+- `cat_udp_packets_stale_total` (counter): duplicate or older frames ignored. A
+  reordered frame that arrives after a later one is counted as lost and then stale.
+- `cat_udp_packets_invalid_total` (counter, unlabeled): malformed CatTag frames.
+  Frames whose service data is not a valid Find Hub EID are ignored without being
+  counted. Starts at zero.
+
+Loss is inferred only from gaps. The first frame after a satellite boot or server
+restart has no baseline, and frames lost after the last received one are not
+counted until a later frame arrives. Frames with invalid service data do not advance
+the sequence, so if a satellite numbers such frames they appear as loss.
+
+```promql
+# UDP drop rate per satellite over five minutes
+rate(cat_udp_packets_lost_total[5m])
+/ (rate(cat_udp_packets_lost_total[5m]) + rate(cat_udp_packets_received_total[5m]))
+```

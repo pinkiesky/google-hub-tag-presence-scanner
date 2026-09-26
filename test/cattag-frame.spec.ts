@@ -9,7 +9,8 @@ function packet(serviceData = Buffer.from([0x40, 0x12, 0x34])): Buffer {
   bytes.writeBigUInt64BE(0x123456789abcdef0n, 12);
   bytes.writeUInt16BE(0xfeaa, 20);
   Buffer.from([1, 2, 3, 4, 5, 6]).copy(bytes, 22);
-  bytes[28] = serviceData.length;
+  bytes[28] = 0xc1; // -63 dBm in two's complement.
+  bytes[29] = serviceData.length;
   serviceData.copy(bytes, CATTAG_HEADER_LENGTH);
 
   return bytes;
@@ -25,6 +26,7 @@ test('parses version 5 big-endian fields and preserves address and service data'
     sequence: 0x123456789abcdef0n,
     serviceUuid: 0xfeaa,
     address: Buffer.from([1, 2, 3, 4, 5, 6]),
+    rssi: -63,
     serviceData: Buffer.from([0x40, 0x12, 0x34]),
   });
   bytes.fill(0);
@@ -40,7 +42,7 @@ test('accepts sequence zero and empty service data', () => {
 });
 
 test.each([
-  ['short header', Buffer.alloc(28), 'frame shorter than 29-byte header'],
+  ['short header', Buffer.alloc(29), 'frame shorter than 30-byte header'],
   [
     'wrong magic',
     (() => {
@@ -71,8 +73,25 @@ test.each([
     })(),
     'unexpected service UUID',
   ],
-  ['truncated data', packet().subarray(0, -1), 'service-data length mismatch'],
-  ['trailing data', Buffer.concat([packet(), Buffer.from([0])]), 'service-data length mismatch'],
+  ['truncated data', packet().subarray(0, -1), 'service-data length mismatch: 32'],
+  [
+    'trailing data',
+    Buffer.concat([packet(), Buffer.from([0])]),
+    'service-data length mismatch: 34',
+  ],
 ])('rejects %s', (_case, bytes, reason) => {
   expect(() => parseCattagFrame(bytes)).toThrow(new CattagFrameError(reason));
+});
+
+test.each([
+  [0x80, -128],
+  [0xc1, -63],
+  [0xff, -1],
+  [0x00, 0],
+  [0x14, 20],
+  [0x7f, 127],
+])('decodes RSSI byte %i as %i dBm', (encoded, expected) => {
+  const bytes = packet();
+  bytes[28] = encoded;
+  expect(parseCattagFrame(bytes).rssi).toBe(expected);
 });

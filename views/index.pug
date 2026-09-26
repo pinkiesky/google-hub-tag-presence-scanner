@@ -14,9 +14,11 @@ html(lang='en')
             th Cat
             th Status
             th Signal
+            th Source
         tbody
           each tag in tags
             tr
               th(scope='row')= tag.name
               td= tag.present ? 'Present' : 'Not present'
               td= tag.signalDbm === null ? '—' : `${tag.signalDbm} dBm`
+              td= tag.sourceName

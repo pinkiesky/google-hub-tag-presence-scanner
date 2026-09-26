@@ -2,11 +2,11 @@ import { Injectable, Logger } from '@nestjs/common';
 
 import { MetricsService } from '../metrics/metrics.service';
 import { PresenceService } from '../presence/presence.service';
-import { validRssi } from './rssi';
 
 export interface TagObservation {
   tagId: string;
   rssi: number;
+  sourceName: string;
   timestamp: number; // Unix seconds, matching persisted presence timestamps.
 }
 
@@ -20,7 +20,7 @@ export class TagObservationService {
   ) {}
 
   observe(observation: TagObservation): void {
-    const { tagId, rssi, timestamp } = observation;
+    const { tagId, rssi, timestamp, sourceName } = observation;
 
     if (!this.presence.ifTagExists(tagId)) {
       this.logger.log(`Logger ${tagId} not found`);
@@ -32,7 +32,7 @@ export class TagObservationService {
       return;
     }
 
-    this.presence.observe(tagId, timestamp, validRssi(rssi) ? rssi : null);
-    this.metrics.observeTag(tagId, rssi, timestamp);
+    this.presence.observe(tagId, timestamp, rssi, sourceName);
+    this.metrics.observeTag(tagId, rssi, timestamp, sourceName);
   }
 }

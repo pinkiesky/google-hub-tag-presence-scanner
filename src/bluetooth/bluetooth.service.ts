@@ -149,7 +149,12 @@ export class BluetoothService implements OnApplicationBootstrap, BeforeApplicati
         return;
       }
 
-      const tag = this.matcher.observe(eid, advertisement.rssi, wallTime());
+      const tag = this.matcher.observe(
+        eid,
+        advertisement.rssi,
+        wallTime(),
+        `ble:hci${this.config.settings.adapter}`,
+      );
 
       if (tag === null) {
         this.counts.unmatched++;

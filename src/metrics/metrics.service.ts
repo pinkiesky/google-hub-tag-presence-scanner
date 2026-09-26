@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Counter, Gauge, Registry } from 'prom-client';
 
 import { validRssi } from '../observations/rssi';
@@ -10,21 +10,7 @@ export class MetricsService {
   private readonly rssi = new Gauge({
     name: 'cat_rssi_dbm',
     help: 'Latest valid RSSI in dBm.',
-    labelNames: ['tag'],
-    registers: [this.registry],
-  });
-
-  private readonly samples = new Counter({
-    name: 'cat_rssi_samples_total',
-    help: 'Number of valid RSSI observations.',
-    labelNames: ['tag'],
-    registers: [this.registry],
-  });
-
-  private readonly offsetSum = new Counter({
-    name: 'cat_rssi_offset_sum_total',
-    help: 'Sum of valid RSSI observations plus 120 per sample.',
-    labelNames: ['tag'],
+    labelNames: ['tag', 'source'],
     registers: [this.registry],
   });
 
@@ -32,6 +18,13 @@ export class MetricsService {
     name: 'cat_last_seen_timestamp_seconds',
     help: 'Unix seconds of the latest matched observation.',
     labelNames: ['tag'],
+    registers: [this.registry],
+  });
+
+  private readonly sourceLastSeen = new Gauge({
+    name: 'cat_source_last_seen_timestamp_seconds',
+    help: 'Unix seconds of the latest matched observation per source.',
+    labelNames: ['tag', 'source'],
     registers: [this.registry],
   });
 
@@ -56,41 +49,78 @@ export class MetricsService {
     registers: [this.registry],
   });
 
+  private readonly udpReceived = new Counter({
+    name: 'cat_udp_packets_received_total',
+    help: 'Valid UDP frames accepted in sequence order.',
+    labelNames: ['satellite'],
+    registers: [this.registry],
+  });
+
+  private readonly udpLost = new Counter({
+    name: 'cat_udp_packets_lost_total',
+    help: 'UDP frames inferred lost from sequence gaps.',
+    labelNames: ['satellite'],
+    registers: [this.registry],
+  });
+
+  private readonly udpStale = new Counter({
+    name: 'cat_udp_packets_stale_total',
+    help: 'Duplicate or out-of-order UDP frames ignored.',
+    labelNames: ['satellite'],
+    registers: [this.registry],
+  });
+
+  private readonly udpInvalid = new Counter({
+    name: 'cat_udp_packets_invalid_total',
+    help: 'UDP datagrams rejected as malformed CatTag frames.',
+    registers: [this.registry],
+  });
+
   private readonly adapter: string;
 
   private readonly tags: Set<string>;
+
+  private readonly logger = new Logger(MetricsService.name);
 
   constructor(presence: PresenceService) {
     this.adapter = `hci${presence.settings.adapter}`;
     this.adapterUp.labels(this.adapter).set(0);
     this.scannerUp.labels(this.adapter).set(0);
     this.scannerRestarts.labels(this.adapter).inc(0);
+    this.udpInvalid.inc(0);
     this.tags = new Set(presence.states.keys());
 
     for (const state of presence.states.values()) {
-      this.samples.labels(state.tag_id).inc(0);
-      this.offsetSum.labels(state.tag_id).inc(0);
-
       if (state.last_seen !== null && Number.isFinite(state.last_seen) && state.last_seen >= 0) {
         this.lastSeen.labels(state.tag_id).set(state.last_seen);
+
+        if (state.source_name !== 'unknown') {
+          this.sourceLastSeen.labels(state.tag_id, state.source_name).set(state.last_seen);
+        }
       }
     }
   }
 
-  observeTag(tagId: string, rssi: number, timestamp: number): void {
-    if (!this.tags.has(tagId) || !Number.isFinite(timestamp) || timestamp < 0) {
+  observeTag(tagId: string, rssi: number, timestamp: number, sourceName: string): void {
+    if (
+      !this.tags.has(tagId) ||
+      !Number.isFinite(timestamp) ||
+      timestamp < 0 ||
+      typeof sourceName !== 'string' ||
+      !sourceName.trim()
+    ) {
+      this.logger.warn('Attempt to log wrong data');
       return;
     }
 
     this.lastSeen.labels(tagId).set(timestamp);
+    this.sourceLastSeen.labels(tagId, sourceName).set(timestamp);
 
     if (!validRssi(rssi)) {
       return;
     }
 
-    this.rssi.labels(tagId).set(rssi);
-    this.samples.labels(tagId).inc();
-    this.offsetSum.labels(tagId).inc(rssi + 120);
+    this.rssi.labels(tagId, sourceName).set(rssi);
   }
 
   setBluetoothAdapterUp(up: boolean): void {
@@ -103,6 +133,20 @@ export class MetricsService {
 
   recordBluetoothScannerRestart(): void {
     this.scannerRestarts.labels(this.adapter).inc();
+  }
+
+  recordUdpPacket(satelliteId: number, lost: bigint): void {
+    const satellite = String(satelliteId);
+    this.udpReceived.labels(satellite).inc();
+    this.udpLost.labels(satellite).inc(Number(lost));
+  }
+
+  recordUdpStale(satelliteId: number): void {
+    this.udpStale.labels(String(satelliteId)).inc();
+  }
+
+  recordUdpInvalid(): void {
+    this.udpInvalid.inc();
   }
 
   getMetrics(): Promise<string> {

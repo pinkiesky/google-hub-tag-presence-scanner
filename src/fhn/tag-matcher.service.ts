@@ -16,11 +16,12 @@ export class TagMatcherService {
     private readonly observations: Pick<TagObservationService, 'observe'>,
   ) {}
 
-  observe(eid: Buffer, rssi: number, timestamp: number): string | null {
+  // CR convert this to parameter object
+  observe(eid: Buffer, rssi: number, timestamp: number, sourceName: string): string | null {
     const tagId = this.match(eid, timestamp);
 
     if (tagId !== null) {
-      this.observations.observe({ tagId, rssi, timestamp });
+      this.observations.observe({ tagId, rssi, timestamp, sourceName });
     }
 
     return tagId;

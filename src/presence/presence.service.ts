@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 
 import { TrackerConfig } from '../config/config.service';
+import { validRssi } from '../observations/rssi';
 import { SqliteService } from '../persistence/sqlite.service';
 import { TagState } from '../tags/tag-state';
 import { wallTime } from '../util/time';
@@ -10,6 +11,7 @@ export interface CatStatus {
   name: string;
   present: boolean;
   signalDbm: number | null;
+  sourceName: string;
 }
 
 @Injectable()
@@ -37,13 +39,18 @@ export class PresenceService {
         id: state.tag_id,
         name: state.name,
         present,
+        sourceName: state.source_name,
         signalDbm: present ? (this.latestRssi.get(state.tag_id) ?? null) : null,
       };
     });
   }
 
-  observe(id: string, now: number, rssi: number | null): void {
-    this.latestRssi.set(id, rssi);
+  observe(id: string, now: number, rssi: number, sourceName: string): void {
+    if (typeof sourceName !== 'string' || !sourceName.trim()) {
+      throw new Error('sourceName is required');
+    }
+
+    this.latestRssi.set(id, validRssi(rssi) ? rssi : null);
     const state = this.states.get(id)!;
 
     if (state.last_seen !== null && now < state.last_seen) {
@@ -51,6 +58,7 @@ export class PresenceService {
     }
 
     state.last_seen = now;
+    state.source_name = sourceName;
     this.store.save(state);
   }
 

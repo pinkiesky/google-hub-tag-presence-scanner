@@ -42,8 +42,8 @@ test('real HTTP returns current, escaped, server-rendered state without secrets 
     .compile();
   app = module.createNestApplication();
   await app.listen(0, '127.0.0.1');
-  m.observe('a', 1110, -50);
-  m.observe('a', 1111, -70);
+  m.observe('a', 1110, -50, 'ble:hci0');
+  m.observe('a', 1111, -70, '<script>source</script>');
   const view = app.get(WebViewService);
   const render = jest.spyOn(view, 'render');
   const original = WebViewService.prototype.render;
@@ -57,6 +57,7 @@ test('real HTTP returns current, escaped, server-rendered state without secrets 
     '&lt;script&gt;Cat A&lt;/script&gt;',
     'Cat B',
     '<td>Present</td>',
+    '&lt;script&gt;source&lt;/script&gt;',
     '-70 dBm',
     'Not present',
     '<td>—</td>',
@@ -83,7 +84,7 @@ test('real HTTP returns current, escaped, server-rendered state without secrets 
   }
 
   expect(response.headers['cache-control']).toBe('no-store');
-  m.observe('b', 1112, -40);
+  m.observe('b', 1112, -40, 'ble:hci0');
   expect((await request(server).get('/')).text).toContain('-40 dBm');
   await request(server).get('/index.html').expect(200);
   await request(server)
@@ -99,7 +100,7 @@ test('real HTTP returns current, escaped, server-rendered state without secrets 
 });
 test('stale signal is hidden when the tag becomes absent', () => {
   m = manager();
-  m.observe('a', 1, -59);
+  m.observe('a', 1, -59, 'ble:hci0');
   const view = new WebViewService(m);
   expect(view.render(61)).toContain('-59 dBm');
   expect(view.render(62)).not.toContain('-59 dBm');

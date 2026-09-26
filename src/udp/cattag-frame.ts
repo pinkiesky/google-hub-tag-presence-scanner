@@ -1,6 +1,6 @@
 export const CATTAG_FRAME_MAGIC = 0xca;
 export const CATTAG_FRAME_VERSION = 5;
-export const CATTAG_HEADER_LENGTH = 29;
+export const CATTAG_HEADER_LENGTH = 30;
 export const CATTAG_SERVICE_UUID = 0xfeaa;
 
 export interface CattagFrame {
@@ -11,6 +11,8 @@ export interface CattagFrame {
   readonly serviceUuid: 0xfeaa;
   /** Six address bytes in the order sent by the satellite. */
   readonly address: Buffer;
+  /** Signed int8 signal strength in dBm. */
+  readonly rssi: number;
   /** Unmodified service-data bytes following the header. */
   readonly serviceData: Buffer;
 }
@@ -19,7 +21,7 @@ export class CattagFrameError extends Error {}
 
 export function parseCattagFrame(packet: Buffer): CattagFrame {
   if (packet.length < CATTAG_HEADER_LENGTH) {
-    throw new CattagFrameError('frame shorter than 29-byte header');
+    throw new CattagFrameError('frame shorter than 30-byte header');
   }
 
   if (packet[0] !== CATTAG_FRAME_MAGIC) {
@@ -36,10 +38,10 @@ export function parseCattagFrame(packet: Buffer): CattagFrame {
     throw new CattagFrameError('unexpected service UUID');
   }
 
-  const dataLength = packet[28];
+  const dataLength = packet[29];
 
   if (packet.length !== CATTAG_HEADER_LENGTH + dataLength) {
-    throw new CattagFrameError('service-data length mismatch');
+    throw new CattagFrameError(`service-data length mismatch: ${packet.length}`);
   }
 
   return {
@@ -49,6 +51,7 @@ export function parseCattagFrame(packet: Buffer): CattagFrame {
     sequence: packet.readBigUInt64BE(12),
     serviceUuid: CATTAG_SERVICE_UUID,
     address: Buffer.from(packet.subarray(22, 28)),
+    rssi: packet.readInt8(28),
     serviceData: Buffer.from(packet.subarray(CATTAG_HEADER_LENGTH)),
   };
 }

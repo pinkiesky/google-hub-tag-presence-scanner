@@ -69,7 +69,10 @@ test('one FEAA-filtered scanner and both real matching paths', async () => {
         serviceData: [{ uuid: 'feaa', data: Buffer.concat([Buffer.from([0x40]), eid]) }],
       },
     });
-    expect(presence.getAllStatuses().find((status) => status.id === tag.id)!.signalDbm).toBe(-62);
+    expect(presence.getAllStatuses().find((status) => status.id === tag.id)).toMatchObject({
+      signalDbm: -62,
+      sourceName: 'ble:hci0',
+    });
   }
 
   await scanner.beforeApplicationShutdown();

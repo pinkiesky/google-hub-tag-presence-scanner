@@ -4,4 +4,5 @@ export interface TagState {
   name: string;
   created_at: number;
   last_seen: number | null;
+  source_name: string;
 }

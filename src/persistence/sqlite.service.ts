@@ -30,9 +30,35 @@ export class SqliteService implements OnApplicationShutdown {
       this.db.exec(`
         CREATE TABLE IF NOT EXISTS states (
           tag_id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at REAL NOT NULL,
-          last_seen REAL
+          last_seen REAL, source_name TEXT NOT NULL
         );
       `);
+      const columns = this.db.pragma('table_info(states)') as Array<{ name: string }>;
+
+      if (!columns.some((column) => column.name === 'source_name')) {
+        this.db.exec("ALTER TABLE states ADD COLUMN source_name TEXT NOT NULL DEFAULT 'unknown'");
+      }
+
+      // Enforce the same requirement on databases that already have a nullable column,
+      // preserving their existing columns, indexes, and other tables.
+      this.db.transaction(() => {
+        this.db.exec(`
+          UPDATE states SET source_name='unknown'
+          WHERE source_name IS NULL OR length(trim(source_name))=0;
+          CREATE TRIGGER IF NOT EXISTS states_source_required_insert
+          BEFORE INSERT ON states
+          WHEN NEW.source_name IS NULL OR length(trim(NEW.source_name))=0
+          BEGIN
+            SELECT RAISE(ABORT, 'source_name is required');
+          END;
+          CREATE TRIGGER IF NOT EXISTS states_source_required_update
+          BEFORE UPDATE OF source_name ON states
+          WHEN NEW.source_name IS NULL OR length(trim(NEW.source_name))=0
+          BEGIN
+            SELECT RAISE(ABORT, 'source_name is required');
+          END;
+        `);
+      })();
     } catch {
       if (this.lock !== undefined) {
         closeSync(this.lock);
@@ -50,7 +76,9 @@ export class SqliteService implements OnApplicationShutdown {
         new Map(
           tags.map((tag) => {
             const row = this.db
-              .prepare('SELECT tag_id,name,created_at,last_seen FROM states WHERE tag_id=?')
+              .prepare(
+                'SELECT tag_id,name,created_at,last_seen,source_name FROM states WHERE tag_id=?',
+              )
               .get(tag.id) as TagState | undefined;
             const state: TagState = row
               ? { ...row, name: tag.name }
@@ -59,6 +87,7 @@ export class SqliteService implements OnApplicationShutdown {
                   name: tag.name,
                   created_at: now,
                   last_seen: null,
+                  source_name: 'unknown',
                 };
             this.save(state);
 
@@ -71,9 +100,9 @@ export class SqliteService implements OnApplicationShutdown {
   save(state: TagState): void {
     this.db
       .prepare(
-        `INSERT INTO states (tag_id,name,created_at,last_seen)
-         VALUES (@tag_id,@name,@created_at,@last_seen)
-         ON CONFLICT(tag_id) DO UPDATE SET name=excluded.name,last_seen=excluded.last_seen`,
+        `INSERT INTO states (tag_id,name,created_at,last_seen,source_name)
+         VALUES (@tag_id,@name,@created_at,@last_seen,@source_name)
+         ON CONFLICT(tag_id) DO UPDATE SET name=excluded.name,last_seen=excluded.last_seen,source_name=excluded.source_name`,
       )
       .run(state);
   }
