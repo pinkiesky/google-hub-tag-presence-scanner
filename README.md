@@ -1,12 +1,13 @@
 # Cat presence monorepo
 
-Two independently installable Node.js 24 / TypeScript applications and one test mock:
+Two independently installable Node.js 24 / TypeScript applications, one test mock, and ESP32 firmware:
 
-| Package                                                            | Responsibility                                                                        |
-| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
-| [cat-presence-mother](cat-presence-mother/README.md)               | NestJS HTTP/UDP ingestion, tag matching, SQLite, presence page and Prometheus metrics |
-| [cat-presence-satellite-rpi](cat-presence-satellite-rpi/README.md) | Raspberry Pi BLE scanning and raw advertisement forwarding over HTTP                  |
-| [cat-presence-satellite-mock](cat-presence-satellite-mock/README.md) | Scripted FEAA observations for local and end-to-end tests                           |
+| Package                                                              | Responsibility                                                                        |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| [cat-presence-mother](cat-presence-mother/README.md)                 | NestJS HTTP/UDP ingestion, tag matching, SQLite, presence page and Prometheus metrics |
+| [cat-presence-satellite-rpi](cat-presence-satellite-rpi/README.md)   | Raspberry Pi BLE scanning and raw advertisement forwarding over HTTP                  |
+| [cat-presence-satellite-mock](cat-presence-satellite-mock/README.md) | Scripted FEAA observations for local and end-to-end tests                             |
+| [cat-presence-satellite-esp32](cat-presence-satellite-esp32/)        | ESP32 BLE scanning and UDP forwarding                                                 |
 
 Mother and RPi satellite each have their own `package.json`, lockfile, build,
 tests and deployment scripts. Run `npm ci`, `npm run build`, `npm test`, and
@@ -14,14 +15,18 @@ tests and deployment scripts. Run `npm ci`, `npm run build`, `npm test`, and
 `npm run lint`, and `npm run format:check` in its directory. After building mother and the RPi satellite, run
 `node --test test/integration.cjs test/mock-integration.cjs` from the root to
 verify both satellite paths through real HTTP into compiled mother. The
-[repository test folder](./test/) contains these integration tests. There is no
-root npm install or shared runtime package. Future firmware can live alongside
-these packages without joining a JavaScript workspace.
+[repository test folder](./test/) contains these integration tests. There is no root npm install or shared runtime package. ESP32 firmware is a separate
+PlatformIO project. Its Makefile finds `clang-format` and `cppcheck` on `PATH`,
+or in the local VS Code C++ and PlatformIO tool directories. Install any missing
+tool, then run `make prettify` from the monorepo root. It runs ESLint fixes
+(and ESP32 cppcheck) in parallel, then runs the formatters in parallel.
+Install each Node package with `npm ci` first. The ESP32 project also provides
+`make format`, `make format-check`, and `make lint`.
 
 Production tag identities, secret files, EID derivation and matching stay in
 mother. The test mock reads only test tag secrets to produce matching EIDs.
-RPi satellites send FEAA service-data bytes and RSSI as JSON. Mother also retains
-the existing CatTag v5 UDP input unchanged for other satellites.
+RPi satellites send FEAA service-data bytes and RSSI as JSON. ESP32 satellites
+send CatTag v7 frames over UDP to mother.
 
 ## Deployment
 

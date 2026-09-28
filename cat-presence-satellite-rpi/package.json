@@ -13,6 +13,7 @@
     "debug": "node dist/debug.js",
     "test": "jest --runInBand",
     "lint": "tsc --noEmit -p tsconfig.json && eslint src test",
+    "lint:fix": "eslint src test --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
