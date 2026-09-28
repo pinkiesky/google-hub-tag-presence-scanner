@@ -1,0 +1,22 @@
+{
+  "name": "cat-presence-satellite-mock",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Scripted FEAA observations for cat presence end-to-end tests",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "start": "node src/main.js",
+    "test": "node --test test/*.test.js",
+    "lint": "eslint src test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@stylistic/eslint-plugin": "^5.10.0",
+    "eslint": "^9.39.5",
+    "prettier": "^3.9.9"
+  }
+}

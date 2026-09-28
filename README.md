@@ -1,20 +1,25 @@
 # Cat presence monorepo
 
-Two independently installable Node.js 24 / TypeScript applications:
+Two independently installable Node.js 24 / TypeScript applications and one test mock:
 
 | Package                                                            | Responsibility                                                                        |
 | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
 | [cat-presence-mother](cat-presence-mother/README.md)               | NestJS HTTP/UDP ingestion, tag matching, SQLite, presence page and Prometheus metrics |
 | [cat-presence-satellite-rpi](cat-presence-satellite-rpi/README.md) | Raspberry Pi BLE scanning and raw advertisement forwarding over HTTP                  |
+| [cat-presence-satellite-mock](cat-presence-satellite-mock/README.md) | Scripted FEAA observations for local and end-to-end tests                           |
 
-Each directory has its own `package.json`, lockfile, build, tests and deployment
-scripts. Run `npm ci`, `npm run build`, `npm test`, and `npm run lint` inside each
-package. After building both, run `node --test test/integration.cjs` from the root
-to verify simulated BLE reception through real HTTP into compiled mother.
-There is no root npm install or shared runtime package. Future firmware
-can live alongside these packages without joining a JavaScript workspace.
+Mother and RPi satellite each have their own `package.json`, lockfile, build,
+tests and deployment scripts. Run `npm ci`, `npm run build`, `npm test`, and
+`npm run lint` inside each package. The mock has no runtime dependencies; run `npm ci`, `npm start`, `npm test`,
+`npm run lint`, and `npm run format:check` in its directory. After building mother and the RPi satellite, run
+`node --test test/integration.cjs test/mock-integration.cjs` from the root to
+verify both satellite paths through real HTTP into compiled mother. The
+[repository test folder](./test/) contains these integration tests. There is no
+root npm install or shared runtime package. Future firmware can live alongside
+these packages without joining a JavaScript workspace.
 
-Only mother holds tag identities, secret files, EID derivation and matching code.
+Production tag identities, secret files, EID derivation and matching stay in
+mother. The test mock reads only test tag secrets to produce matching EIDs.
 RPi satellites send FEAA service-data bytes and RSSI as JSON. Mother also retains
 the existing CatTag v5 UDP input unchanged for other satellites.
 
