@@ -10,7 +10,14 @@
 
 #include "wifi_secrets.h"
 
+#ifndef SATELLITE_NAME
+#error "Define SATELLITE_NAME in wifi_secrets.h"
+#endif
+
 namespace {
+constexpr size_t SATELLITE_NAME_LENGTH = sizeof(SATELLITE_NAME) - 1;
+static_assert(SATELLITE_NAME_LENGTH > 0 && SATELLITE_NAME_LENGTH <= 16,
+              "SATELLITE_NAME must contain 1 to 16 bytes");
 constexpr uint8_t LED_PIN = 8;
 constexpr uint8_t LED_ON = LOW;  // The onboard LED is active-low.
 constexpr uint8_t LED_OFF = HIGH;
@@ -94,22 +101,22 @@ void sendQueuedReports() {
 
     ServiceReport report;
     while (xQueueReceive(reportQueue, &report, 0) == pdTRUE) {
-        // Version 5: magic (1), version (1), satellite ID (2), boot ID (8),
-        // sequence (8), UUID (2), address (6), RSSI (1), data length (1), then service data.
+        // Version 7: magic (1), version (1), zero-padded satellite name (16),
+        // boot ID (8), sequence (8), UUID (2), address (6), RSSI (1),
+        // data length (1), then service data.
         // RSSI is signed int8 in dBm, encoded as two's complement.
         // Multi-byte integers are big endian. Sequence starts at zero.
-        uint8_t header[30] = {};
+        uint8_t header[44] = {};
         header[0] = 0xCA;
-        header[1] = 5;
-        header[2] = static_cast<uint8_t>(SATELLITE_ID >> 8);
-        header[3] = static_cast<uint8_t>(SATELLITE_ID);
-        writeBigEndian64(header + 4, bootId);
-        writeBigEndian64(header + 12, nextSequence++);
-        header[20] = 0xFE;
-        header[21] = 0xAA;
-        std::memcpy(header + 22, report.address, sizeof(report.address));
-        header[28] = static_cast<uint8_t>(report.rssi);
-        header[29] = report.dataLength;
+        header[1] = 7;
+        std::memcpy(header + 2, SATELLITE_NAME, SATELLITE_NAME_LENGTH);
+        writeBigEndian64(header + 18, bootId);
+        writeBigEndian64(header + 26, nextSequence++);
+        header[34] = 0xFE;
+        header[35] = 0xAA;
+        std::memcpy(header + 36, report.address, sizeof(report.address));
+        header[42] = static_cast<uint8_t>(report.rssi);
+        header[43] = report.dataLength;
 
         if (udp.beginPacket(udpServerIp, UDP_SERVER_PORT)) {
             udp.write(header, sizeof(header));

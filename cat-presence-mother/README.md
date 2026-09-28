@@ -85,28 +85,30 @@ secret files, derives EIDs and identifies tags. UDP sources retain their existin
 ## UDP satellite input
 
 The service listens on UDP port `15433` on all IPv4 interfaces. Set `UDP_PORT` or
-`service.udp_port` to change it. It parses CatTag satellite frame version 5:
+`service.udp_port` to change it. It parses CatTag satellite frame version 7:
 
 | Offset | Size     | Field                                 |
 | ------ | -------- | ------------------------------------- |
 | 0      | 1        | Magic (`CA`)                          |
-| 1      | 1        | Version (`5`)                         |
-| 2      | 2        | Satellite ID (big endian)             |
-| 4      | 8        | Boot ID (big endian)                  |
-| 12     | 8        | Sequence (big endian, starts at zero) |
-| 20     | 2        | Service UUID (`FE AA`)                |
-| 22     | 6        | Address bytes as sent                 |
-| 28     | 1        | RSSI (signed int8, dBm)               |
-| 29     | 1        | Service-data length                   |
-| 30     | Variable | Unmodified service-data bytes         |
+| 1      | 1        | Version (`7`)                         |
+| 2      | 16       | Satellite name (UTF-8, zero-padded)   |
+| 18     | 8        | Boot ID (big endian)                  |
+| 26     | 8        | Sequence (big endian, starts at zero) |
+| 34     | 2        | Service UUID (`FE AA`)                |
+| 36     | 6        | Address bytes as sent                 |
+| 42     | 1        | RSSI (signed int8, dBm)               |
+| 43     | 1        | Service-data length                   |
+| 44     | Variable | Unmodified service-data bytes         |
 
-The declared length must match the datagram exactly. Valid frames produce a log line
-with the sender, satellite ID, boot ID, sequence, address, RSSI, and up to 64 service-data bytes in hex.
+The declared length must match the datagram exactly. Each satellite needs a unique, nonempty
+name of up to 16 UTF-8 bytes. Shorter names are zero-padded; a full-length name has no
+terminator. Valid frames produce a log line with the sender, satellite name, boot ID,
+sequence, address, RSSI, and up to 64 service-data bytes in hex.
 Invalid frames produce a warning. Valid Find Hub service data is decoded to an EID
 and passed to `TagMatcherService.observe`. A cryptographic match updates presence
 and the last-seen metric using the server's receive time.
 
-Sequence numbers must strictly increase for each satellite ID and boot ID pair.
+Sequence numbers must strictly increase for each satellite name and boot ID pair.
 Duplicates and older packets are ignored; gaps are allowed. The first received
 sequence may be any value, including zero. A new boot ID starts a new sequence
 stream. Sequence tracking is in memory and resets when the server restarts.
@@ -259,8 +261,8 @@ for Nest's transitive dependency; this application has no upload routes.
 
 ## UDP packet metrics
 
-`/metrics` also exports UDP satellite counters, labeled with the numeric satellite ID
-(`satellite="7"`) where the frame header is valid:
+`/metrics` also exports UDP satellite counters, labeled with the satellite name
+(`satellite="kitchen"`) where the frame header is valid:
 
 - `cat_udp_packets_received_total` (counter): frames accepted in sequence order.
 - `cat_udp_packets_lost_total` (counter): sequence numbers skipped between accepted

@@ -99,14 +99,14 @@ export class MetricsService {
     this.rssi.labels(tagId, sourceName).set(rssi);
   }
 
-  recordUdpPacket(satelliteId: number, lost: bigint): void {
-    const satellite = String(satelliteId);
+  recordUdpPacket(satelliteName: string, lost: bigint): void {
+    const satellite = satelliteName;
     this.udpReceived.labels(satellite).inc();
     this.udpLost.labels(satellite).inc(Number(lost));
   }
 
-  recordUdpStale(satelliteId: number): void {
-    this.udpStale.labels(String(satelliteId)).inc();
+  recordUdpStale(satelliteName: string): void {
+    this.udpStale.labels(satelliteName).inc();
   }
 
   recordUdpInvalid(): void {

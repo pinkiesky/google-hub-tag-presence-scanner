@@ -7,5 +7,6 @@ constexpr char WIFI_PASSWORD[] = "your-password";
 constexpr char UDP_SERVER_IP[] = "192.0.2.1";
 constexpr uint16_t UDP_SERVER_PORT = 9000;
 
-// Set a unique ID for each satellite (0-65535).
-constexpr uint16_t SATELLITE_ID = 60001;
+// Set a unique name for each satellite (1-16 UTF-8 bytes).
+// Shorter names are zero-padded in UDP packets.
+#define SATELLITE_NAME "living-room"

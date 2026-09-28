@@ -67,7 +67,7 @@ export class UdpService implements OnApplicationBootstrap, BeforeApplicationShut
       const preview = frame.serviceData.subarray(0, PREVIEW_BYTES).toString('hex');
       const suffix = frame.serviceData.length > PREVIEW_BYTES ? '…' : '';
       this.logger.log(
-        `CatTag UDP from ${peer.address}:${peer.port}: satelliteId=${frame.satelliteId} bootId=0x${frame.bootId.toString(16).padStart(16, '0')} sequence=${frame.sequence} uuid=feaa address=${frame.address.toString('hex')} rssi=${frame.rssi} dataLength=${frame.serviceData.length} serviceData=${preview}${suffix}`,
+        `CatTag UDP from ${peer.address}:${peer.port}: satelliteName=${JSON.stringify(frame.satelliteName)} bootId=0x${frame.bootId.toString(16).padStart(16, '0')} sequence=${frame.sequence} uuid=feaa address=${frame.address.toString('hex')} rssi=${frame.rssi} dataLength=${frame.serviceData.length} serviceData=${preview}${suffix}`,
       );
       const eid = this.parser.parse([{ uuid: 'feaa', data: frame.serviceData }]);
 
@@ -75,11 +75,11 @@ export class UdpService implements OnApplicationBootstrap, BeforeApplicationShut
         return;
       }
 
-      const session = `${frame.satelliteId}:${frame.bootId}`;
+      const session = `${frame.satelliteName}:${frame.bootId}`;
       const previous = this.sequences.get(session);
 
       if (previous !== undefined && frame.sequence <= previous) {
-        this.metrics.recordUdpStale(frame.satelliteId);
+        this.metrics.recordUdpStale(frame.satelliteName);
 
         return;
       }
@@ -87,7 +87,7 @@ export class UdpService implements OnApplicationBootstrap, BeforeApplicationShut
       this.sequences.set(session, frame.sequence);
       // The first frame of a session has no baseline, so it cannot reveal earlier losses.
       this.metrics.recordUdpPacket(
-        frame.satelliteId,
+        frame.satelliteName,
         previous === undefined ? 0n : frame.sequence - previous - 1n,
       );
 
@@ -95,11 +95,11 @@ export class UdpService implements OnApplicationBootstrap, BeforeApplicationShut
         eid,
         frame.rssi,
         wallTime(),
-        `satellite:${frame.satelliteId}`,
+        `satellite:${frame.satelliteName}`,
       );
       const tag = this.config.tags.find((tag) => tag.id === tagId);
       this.logger.log(
-        `CatTag UDP observation: matched=${tagId !== null} tagId=${tagId ?? 'unknown'} tagName=${JSON.stringify(tag?.name ?? 'unknown')} rssi=${frame.rssi} satelliteId=${frame.satelliteId} sequence=${frame.sequence}`,
+        `CatTag UDP observation: matched=${tagId !== null} tagId=${tagId ?? 'unknown'} tagName=${JSON.stringify(tag?.name ?? 'unknown')} rssi=${frame.rssi} satelliteName=${JSON.stringify(frame.satelliteName)} sequence=${frame.sequence}`,
       );
     } catch (error) {
       if (error instanceof CattagFrameError) {
