@@ -102,6 +102,7 @@ test('restores persisted last-seen without inventing RSSI', async () => {
 
   try {
     presence = manager({ database: join(directory, 'state.db') });
+    presence.observe('a', 1790103072, -60, 'satellite:7');
     presence.observe('a', 1790103073.5, -63, 'ble:hci0');
     presence.observe('b', 1790103000, -63, 'ble:hci0');
     presence.store.db.prepare("UPDATE states SET source_name='unknown' WHERE tag_id='b'").run();
@@ -114,7 +115,12 @@ test('restores persisted last-seen without inventing RSSI', async () => {
     expect(text).toContain(
       'cat_source_last_seen_timestamp_seconds{tag="a",source="ble:hci0"} 1790103073.5',
     );
-    expect(text).not.toContain('cat_source_last_seen_timestamp_seconds{tag="b"');
+    expect(text).toContain(
+      'cat_source_last_seen_timestamp_seconds{tag="a",source="satellite:7"} 1790103072',
+    );
+    expect(text).toContain(
+      'cat_source_last_seen_timestamp_seconds{tag="b",source="ble:hci0"} 1790103000',
+    );
     expect(text).not.toContain('cat_rssi_dbm{tag="a"');
   } finally {
     presence.store.onApplicationShutdown();
@@ -126,7 +132,7 @@ test.each([NaN, Infinity, -Infinity, -121, 127, 21])(
   'RSSI %s cannot corrupt metrics or gate presence',
   async (rssi) => {
     observations.observe({ sourceName: 'ble:hci0', tagId: 'a', rssi, timestamp: 100 });
-    expect(presence.getAllStatuses(100)[0]).toMatchObject({ present: true, signalDbm: null });
+    expect(presence.getAllStatuses(100)[0]).toMatchObject({ present: true, maxSignalDbm: null });
     const text = await metrics.getMetrics();
     expect(text).toContain('cat_last_seen_timestamp_seconds{tag="a"} 100');
     expect(text).not.toContain('cat_rssi_dbm{tag="a"');
@@ -211,5 +217,5 @@ test('real module wiring exposes read-only metrics independently of page renderi
   expect(save).not.toHaveBeenCalled();
   expect(crypto).not.toHaveBeenCalled();
   expect(observe).not.toHaveBeenCalled();
-  expect(app.get(PresenceService).getAllStatuses(timestamp)[0].signalDbm).toBe(-65);
+  expect(app.get(PresenceService).getAllStatuses(timestamp)[0].maxSignalDbm).toBe(-61);
 });

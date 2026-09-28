@@ -4,28 +4,34 @@ body {
     sans-serif;
   margin: 2rem auto;
   padding: 0 1rem;
-  max-width: 1000px;
+  max-width: 900px;
   color: #182b36;
   background: #f6f8fa;
+}
+h1 {
+  margin-bottom: 0.5rem;
+}
+#connection {
+  color: #596975;
+}
+section {
+  margin: 1rem 0;
+  padding: 1rem;
+  background: white;
+}
+h2 {
+  margin: 0;
+}
+section p {
+  margin: 0.5rem 0 1rem;
 }
 table {
   width: 100%;
   border-collapse: collapse;
-  background: white;
 }
 th,
 td {
   text-align: left;
-  padding: 1rem;
+  padding: 0.75rem;
   border-bottom: 1px solid #dce3e8;
-}
-small {
-  display: block;
-  color: #596975;
-}
-p {
-  color: #596975;
-}
-.table {
-  overflow-x: auto;
 }

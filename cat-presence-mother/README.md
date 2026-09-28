@@ -111,9 +111,9 @@ Duplicates and older packets are ignored; gaps are allowed. The first received
 sequence may be any value, including zero. A new boot ID starts a new sequence
 stream. Sequence tracking is in memory and resets when the server restarts.
 
-The latest matched observation supplies `sourceName`: `satellite:<id>` for UDP or
-`satellite-rpi:<id>` for HTTP. The source is saved with last-seen and shown
-on the presence page, including after the tag becomes absent. RSSI is decoded from a signed
+Matched observations use `sourceName`: `satellite:<id>` for UDP or
+`satellite-rpi:<id>` for HTTP. Each source is saved with its last-seen time
+and shown on the presence page, including after it becomes absent. RSSI is decoded from a signed
 two's-complement byte and uses the same signal validation and metrics as HTTP
 observations. Invalid RSSI still allows a matched packet to update presence.
 
@@ -159,18 +159,23 @@ Do not copy development configuration or secret files into deployment sources.
 
 ## State storage
 
-SQLite stores tag identity, creation time, last-seen timestamps, and the latest
-observation source. `sourceName` is required for every observation, status, and
-stored state. Unobserved tags and older rows without a source use `unknown`.
-Database migration fills missing sources and enforces nonempty values for future writes. Keep the
-database across restarts to preserve last-seen metrics. It uses WAL and FULL
-synchronization. Back up a live database with SQLite's `.backup` command.
-A file lock prevents two instances sharing one database. RSSI stays in memory;
-no RSSI history or Prometheus counters are persisted.
+SQLite stores tag identity, creation time, aggregate last-seen time, and the
+latest observation source in `states`. The `source_states` table keeps each
+tag/source pair's last-seen time. `presence_samples` stores valid RSSI values
+(and null for invalid RSSI) for the rolling presence window. Old samples are
+pruned as observations arrive; queries filter by the current window as well.
+The configured `MISSING_AFTER_SECONDS` value defines that window.
 
-Existing databases remain compatible without a destructive migration. Legacy
-columns and tables are ignored and left untouched; new databases contain only
-the presence state table.
+`sourceName` is required for every observation and stored state. Unobserved
+tags and older rows without a source use `unknown`. Migration fills missing
+sources and creates a source state for a legacy row with a known source. Legacy
+rows have no recoverable RSSI samples, so their signal remains unknown until a
+new observation arrives. Existing databases remain compatible; unrelated
+legacy columns and tables are left untouched. Keep the database across restarts
+to preserve presence and the current signal window. It uses WAL and FULL
+synchronization. Back up a live database with SQLite's `.backup` command.
+A file lock prevents two instances sharing one database. Prometheus counters
+are not persisted.
 
 ## Tracking behavior
 
@@ -182,22 +187,25 @@ default. Ambiguous EIDs are rejected. `@noble/curves` performs curve arithmetic 
 `node:crypto` performs AES. Known EID vectors are checked by `npm test`.
 
 Missing begins strictly **after 60 seconds** by default, using the configured
-presence timeout. Presence is evaluated from last-seen on each page request and
-is never RSSI-gated.
+presence timeout. Presence is evaluated from last-seen on each status API request
+and is never RSSI-gated. Aggregate presence is true when any source has been
+seen within the window. Its signal is the highest valid RSSI across all sources
+in that window. Each source has its own presence status and average of valid
+RSSI samples in the same window. Sources remain listed after they become absent,
+with a null average.
 
-The page is rendered server-side from `views/index.pug`, compiled once at startup
-and supplied with a fresh display model for each request. Pug escapes dynamic
-values; no HTML strings are assembled in TypeScript. The build copies Pug templates
-to `dist/views`, and `npm run format` includes Pug via `@prettier/plugin-pug`.
+The single page at `/` is served from `views/realtime.pug`. Its small
+JavaScript file fetches `GET /api/tags` on load and every second. The endpoint
+returns `{ "tags": [...] }` with each configured tag's `id`, `name`,
+`present`, `maxSignalDbm` (number or null), and `sources`. Each source has
+`name`, `present`, and `averageSignalDbm` (number or null). The page shows
+the aggregate state and a table of sources for each tag. It displays a retry
+message if an update fails. Tag and source text is inserted with `textContent`.
 
-The human-readable page at `/` displays cat name, Present / Not present, latest
-signal strength, and presence source. Absent cats and cats without a signal observation since
-startup show `—`. The existing `PresenceService` is the authoritative presence
-state service; `getAllStatuses()` supplies the web layer. The page also serves
-`/index.html`, HEAD, and CSS, with LAN-only IPv4 peer checks, no-store and CSP
-headers. There is no status API, JavaScript, polling, or automatic refresh; the separate
-HTTP observation API accepts satellite input.
-Public and IPv6 peers are rejected; forwarded headers are ignored.
+The page, API, JavaScript, and CSS use the LAN-only IPv4 socket-peer policy,
+no-store and CSP headers. Public and IPv6 peers are rejected; forwarded headers
+are ignored. The build copies the Pug template and public assets to `dist`.
+The separate HTTP observation API accepts satellite input.
 
 ## Prometheus metrics
 
@@ -216,8 +224,7 @@ No default Node/process metrics are enabled.
 All labels use stable configured IDs (`tag="cat-a"`). `source` is the observation's
 `sourceName` (`satellite-rpi:<id>` or `satellite:<id>`). RSSI is split by source
 because signal strength from different receivers is not comparable. Last-seen gauges
-initialize from persisted timestamps; the per-source last-seen gauge is restored only
-for the persisted latest source (not `unknown`). Unknown last-seen and RSSI gauge
+initialize from persisted timestamps for every known source. Unknown last-seen and RSSI gauge
 series are omitted until observed, rather than inventing values or exporting
 non-finite samples. RSSI gauges retain their latest valid value; use last-seen to
 assess freshness.

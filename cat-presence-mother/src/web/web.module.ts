@@ -39,7 +39,7 @@ export class WebModule implements NestModule {
         res.setHeader('X-Content-Type-Options', 'nosniff');
         res.setHeader(
           'Content-Security-Policy',
-          "default-src 'none'; style-src 'self'; frame-ancestors 'none'",
+          "default-src 'none'; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'",
         );
         next();
       })

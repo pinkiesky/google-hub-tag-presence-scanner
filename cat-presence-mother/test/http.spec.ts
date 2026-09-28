@@ -43,8 +43,8 @@ test('HTTP raw advertisement updates presence and metrics via cryptographic matc
   await request(app.getHttpServer()).post('/api/v1/observations').send(packet).expect(204);
   expect(app.get(PresenceService).getAllStatuses()[0]).toMatchObject({
     present: true,
-    signalDbm: -63,
-    sourceName: 'satellite-rpi:pi-1',
+    maxSignalDbm: -63,
+    sources: [{ name: 'satellite-rpi:pi-1', present: true, averageSignalDbm: -63 }],
   });
   expect(await app.get(MetricsService).getMetrics()).toContain(
     'cat_rssi_dbm{tag="a",source="satellite-rpi:pi-1"} -63',
@@ -55,8 +55,11 @@ test('HTTP raw advertisement updates presence and metrics via cryptographic matc
     .expect(204);
   expect(app.get(PresenceService).getAllStatuses()[0]).toMatchObject({
     present: true,
-    signalDbm: null,
-    sourceName: 'satellite-rpi:pi-2',
+    maxSignalDbm: -63,
+    sources: [
+      { name: 'satellite-rpi:pi-1', present: true, averageSignalDbm: -63 },
+      { name: 'satellite-rpi:pi-2', present: true, averageSignalDbm: null },
+    ],
   });
   const metrics = await app.get(MetricsService).getMetrics();
   expect(metrics).toContain(

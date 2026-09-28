@@ -66,10 +66,12 @@ export class MetricsService {
     for (const state of presence.states.values()) {
       if (state.last_seen !== null && Number.isFinite(state.last_seen) && state.last_seen >= 0) {
         this.lastSeen.labels(state.tag_id).set(state.last_seen);
+      }
+    }
 
-        if (state.source_name !== 'unknown') {
-          this.sourceLastSeen.labels(state.tag_id, state.source_name).set(state.last_seen);
-        }
+    for (const source of presence.store.getSourceLastSeen()) {
+      if (this.tags.has(source.tagId) && Number.isFinite(source.lastSeen) && source.lastSeen >= 0) {
+        this.sourceLastSeen.labels(source.tagId, source.name).set(source.lastSeen);
       }
     }
   }

@@ -5,7 +5,6 @@ import request from 'supertest';
 import { SqliteService } from '../src/persistence/sqlite.service';
 import { PresenceService } from '../src/presence/presence.service';
 import { allowedClient, WebModule } from '../src/web/web.module';
-import { WebViewService } from '../src/web/web-view.service';
 import { config, manager, tags } from './helpers';
 
 let app: INestApplication | undefined;
@@ -31,7 +30,8 @@ test.each([
 ])('LAN peer %s is allowed=%s', (address, allowed) =>
   expect(allowedClient(address as string)).toBe(allowed),
 );
-test('real HTTP returns current, escaped, server-rendered state without secrets or APIs', async () => {
+
+test('one page polls the live tag API and never embeds tag data in HTML', async () => {
   const cfg = config({}, { tags: [{ ...tags[0], name: '<script>Cat A</script>' }, tags[1]] });
   m = manager({}, { tags: cfg.tags });
   const module = await Test.createTestingModule({ imports: [WebModule] })
@@ -42,76 +42,64 @@ test('real HTTP returns current, escaped, server-rendered state without secrets 
     .compile();
   app = module.createNestApplication();
   await app.listen(0, '127.0.0.1');
-  m.observe('a', 1110, -50, 'ble:hci0');
-  m.observe('a', 1111, -70, '<script>source</script>');
-  const view = app.get(WebViewService);
-  const render = jest.spyOn(view, 'render');
-  const original = WebViewService.prototype.render;
-  render.mockImplementation(() => original.call(view, 1112));
   const server = app.getHttpServer() as import('node:http').Server;
-  const response = await request(server).get('/').expect(200);
-  expect(response.text).toMatch(/<!doctype html>/i);
-  expect(response.text).toContain('</html>');
 
-  for (const value of [
-    '&lt;script&gt;Cat A&lt;/script&gt;',
-    'Cat B',
-    '<td>Present</td>',
-    '&lt;script&gt;source&lt;/script&gt;',
-    '-70 dBm',
-    'Not present',
-    '<td>—</td>',
-  ]) {
-    expect(response.text).toContain(value);
-  }
+  const page = await request(server).get('/').expect(200);
+  expect(page.text).toMatch(/<!doctype html>/i);
+  expect(page.text).toContain('id="tags"');
+  expect(page.text).toContain('src="/app.js"');
+  expect(page.text).not.toContain('<script>Cat A</script>');
+  expect(page.text).not.toContain(cfg.tags[0].eik.toString('hex'));
+  expect(page.headers['cache-control']).toBe('no-store');
+  expect(page.headers['content-security-policy']).toContain("script-src 'self'");
+  expect((await request(server).head('/').expect(200)).text).toBeUndefined();
 
-  for (const forbidden of [
-    '<script>',
-    'Alert sent',
-    'Last seen',
-    'Average RSSI',
-    'Telegram',
-    'Generated at',
-    'http-equiv',
-    'fetch(',
-    'XMLHttpRequest',
-    'WebSocket',
-    'EventSource',
-    '/api/status',
-    ...cfg.tags.map((t) => t.eik.toString('hex')),
-  ]) {
-    expect(response.text).not.toContain(forbidden);
-  }
-
-  expect(response.headers['cache-control']).toBe('no-store');
-  m.observe('b', 1112, -40, 'ble:hci0');
-  expect((await request(server).get('/')).text).toContain('-40 dBm');
-  await request(server).get('/index.html').expect(200);
+  const script = await request(server)
+    .get('/app.js')
+    .expect('Content-Type', /text\/javascript/)
+    .expect(200);
+  expect(script.text).toContain("fetch('/api/tags'");
+  expect(script.text).toContain('setInterval(refresh, 1000)');
+  expect(script.text).toContain('title.textContent = tag.name');
+  expect(script.text).toContain('name.textContent = source.name');
   await request(server)
     .get('/style.css')
     .expect('Content-Type', /text\/css/)
     .expect(200);
-  const head = await request(server).head('/').expect(200);
-  expect(head.text).toBeUndefined();
 
-  for (const path of ['/api/status', '/status', '/status.json', '/etc/passwd']) {
+  const initial = await request(server).get('/api/tags').expect(200);
+  expect(initial.body).toEqual({
+    tags: [
+      {
+        id: 'a',
+        name: '<script>Cat A</script>',
+        present: false,
+        maxSignalDbm: null,
+        sources: [],
+      },
+      {
+        id: 'b',
+        name: 'Cat B',
+        present: false,
+        maxSignalDbm: null,
+        sources: [],
+      },
+    ],
+  });
+  expect(initial.headers['cache-control']).toBe('no-store');
+  expect(initial.text).not.toContain(cfg.tags[0].eik.toString('hex'));
+
+  const now = Date.now() / 1000;
+  m.observe('a', now, -70, '<script>source</script>');
+  expect((await request(server).get('/api/tags').expect(200)).body.tags[0]).toEqual({
+    id: 'a',
+    name: '<script>Cat A</script>',
+    present: true,
+    maxSignalDbm: -70,
+    sources: [{ name: '<script>source</script>', present: true, averageSignalDbm: -70 }],
+  });
+
+  for (const path of ['/index.html', '/api/status', '/status', '/status.json']) {
     await request(server).get(path).expect(404);
   }
-});
-test('stale signal is hidden when the tag becomes absent', () => {
-  m = manager();
-  m.observe('a', 1, -59, 'ble:hci0');
-  const view = new WebViewService(m);
-  expect(view.render(61)).toContain('-59 dBm');
-  expect(view.render(62)).not.toContain('-59 dBm');
-  expect(view.render(62)).toContain('<td>—</td>');
-});
-
-test('Pug treats names as escaped data, including template syntax', () => {
-  const name = '#{1 + 1} & <img src=x onerror="alert(1)">';
-  m = manager({}, { tags: [{ ...tags[0], name }] });
-  const page = new WebViewService(m).render(5);
-  expect(page).toContain('#{1 + 1} &amp; &lt;img');
-  expect(page).not.toContain('<img');
-  expect(page).not.toContain('{{rows}}');
 });

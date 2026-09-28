@@ -232,8 +232,10 @@ test.each([-63, -128, 127])(
       const presence = app.get(PresenceService);
       expect(presence.getAllStatuses()[0]).toMatchObject({
         present: true,
-        sourceName: 'satellite:7',
-        signalDbm: rssi === -63 ? rssi : null,
+        maxSignalDbm: rssi === -63 ? rssi : null,
+        sources: [
+          { name: 'satellite:7', present: true, averageSignalDbm: rssi === -63 ? rssi : null },
+        ],
       });
       expect(presence.states.get('a')).toMatchObject({
         last_seen: 12048,

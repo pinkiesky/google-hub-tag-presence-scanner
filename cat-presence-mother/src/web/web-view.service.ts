@@ -4,13 +4,6 @@ import { join } from 'node:path';
 import { Injectable } from '@nestjs/common';
 import { compileFile } from 'pug';
 
-import { CatStatus, PresenceService } from '../presence/presence.service';
-import { wallTime } from '../util/time';
-
-export interface StatusPageViewModel {
-  tags: CatStatus[];
-}
-
 function assetPath(path: string): string {
   const compiled = join(__dirname, '..', path);
 
@@ -19,14 +12,11 @@ function assetPath(path: string): string {
 
 @Injectable()
 export class WebViewService {
-  private readonly template = compileFile(assetPath('views/index.pug'), { compileDebug: false });
+  private readonly template = compileFile(assetPath('views/realtime.pug'), { compileDebug: false });
   readonly css = readFileSync(assetPath('public/style.css'), 'utf8');
-  constructor(private readonly presence: PresenceService) {}
-  viewModel(now = wallTime()): StatusPageViewModel {
-    return { tags: this.presence.getAllStatuses(now) };
-  }
+  readonly js = readFileSync(assetPath('public/app.js'), 'utf8');
 
-  render(now = wallTime()): string {
-    return this.template(this.viewModel(now));
+  render(): string {
+    return this.template();
   }
 }

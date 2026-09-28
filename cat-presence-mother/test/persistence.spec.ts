@@ -40,12 +40,18 @@ test('loads legacy database presence without exposing or modifying obsolete stat
   }
 });
 
-test('new databases store only presence and do not persist RSSI', () => {
+test('new databases persist source states and window samples', () => {
   const m = manager();
 
   try {
     const tables = m.store.db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
-    expect(tables).toEqual([{ name: 'states' }]);
+    expect(tables).toEqual(
+      expect.arrayContaining([
+        { name: 'states' },
+        { name: 'source_states' },
+        { name: 'presence_samples' },
+      ]),
+    );
     m.observe('a', 100, -63, 'ble:hci0');
     expect(m.store.db.prepare('SELECT * FROM states WHERE tag_id=?').get('a')).toEqual({
       tag_id: 'a',
@@ -54,6 +60,12 @@ test('new databases store only presence and do not persist RSSI', () => {
       last_seen: 100,
       source_name: 'ble:hci0',
     });
+    expect(
+      m.store.db.prepare('SELECT tag_id,source_name,last_seen FROM source_states').all(),
+    ).toEqual([{ tag_id: 'a', source_name: 'ble:hci0', last_seen: 100 }]);
+    expect(
+      m.store.db.prepare('SELECT tag_id,source_name,observed_at,rssi FROM presence_samples').all(),
+    ).toEqual([{ tag_id: 'a', source_name: 'ble:hci0', observed_at: 100, rssi: -63 }]);
   } finally {
     m.store.onApplicationShutdown();
   }
