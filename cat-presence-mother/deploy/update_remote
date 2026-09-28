@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+source "$(dirname -- "${BASH_SOURCE[0]}")/remote_common.sh"
+copy_project
+remote_root <<'REMOTE'
+cd /opt/cat-presence-mother
+node -e "if (Number(process.versions.node.split('.')[0]) !== 24) process.exit(1)"
+npm ci
+npm run build
+install -m 0644 deploy/cat-presence-mother.service /etc/systemd/system/cat-presence-mother.service
+systemctl daemon-reload
+REMOTE
+echo 'Updated application files. Run restart_remote to load the new version.'

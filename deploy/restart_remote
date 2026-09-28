@@ -1,8 +1,0 @@
-#!/usr/bin/env bash
-set -euo pipefail
-source "$(dirname -- "${BASH_SOURCE[0]}")/remote_common.sh"
-
-remote_root <<'REMOTE'
-systemctl restart cat-tracker
-systemctl --no-pager --full status cat-tracker
-REMOTE

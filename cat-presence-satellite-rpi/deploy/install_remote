@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+source "$(dirname -- "${BASH_SOURCE[0]}")/remote_common.sh"
+copy_project
+echo 'Copied application files. Run setup_infra_remote next.'

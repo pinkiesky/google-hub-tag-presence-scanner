@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+source "$(dirname -- "${BASH_SOURCE[0]}")/remote_common.sh"
+remote_root <<'REMOTE'
+test -f /opt/cat-presence-mother/package.json || { echo 'Run install_remote first.' >&2; exit 1; }
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install -y python3 build-essential rsync sqlite3
+test -x /usr/bin/node || { echo 'Install Node.js 24 at /usr/bin/node first.' >&2; exit 1; }
+/usr/bin/node -e "if (Number(process.versions.node.split('.')[0]) !== 24) process.exit(1)"
+if ! id cat-presence-mother >/dev/null 2>&1; then
+    useradd --system --user-group --home-dir /nonexistent --no-create-home --shell /usr/sbin/nologin cat-presence-mother
+fi
+install -d -o root -g cat-presence-mother -m 0750 /etc/cat-tracker
+install -d -o cat-presence-mother -g cat-presence-mother -m 0700 /var/lib/cat-tracker
+if [[ ! -e /etc/cat-tracker/config.json ]]; then
+    install -o root -g cat-presence-mother -m 0640 /opt/cat-presence-mother/config.example.json /etc/cat-tracker/config.json
+fi
+
+cd /opt/cat-presence-mother
+npm ci
+npm run build
+npm test
+npm run lint
+install -m 0644 deploy/cat-presence-mother.service /etc/systemd/system/cat-presence-mother.service
+systemctl daemon-reload
+systemctl enable cat-presence-mother
+REMOTE
+echo 'Infrastructure ready. Configure the service before running restart_remote.'

@@ -1,0 +1,32 @@
+[Unit]
+Description=Cat presence BLE satellite
+Wants=network-online.target time-sync.target bluetooth.service
+After=network-online.target time-sync.target bluetooth.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=cat-presence-satellite-rpi
+Group=cat-presence-satellite-rpi
+WorkingDirectory=/opt/cat-presence-satellite-rpi
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node /opt/cat-presence-satellite-rpi/dist/main.js
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+SupplementaryGroups=bluetooth
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_BLUETOOTH AF_NETLINK
+CapabilityBoundingSet=CAP_NET_RAW
+AmbientCapabilities=CAP_NET_RAW
+
+[Install]
+WantedBy=multi-user.target

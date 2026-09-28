@@ -1,345 +1,72 @@
-# Cat tracker
+# Cat presence monorepo
 
-Node.js 24 / TypeScript / NestJS service for Raspberry Pi OS ARM64. One BLE scanner
-identifies Google Find Hub tags cryptographically, records presence in SQLite,
-exports Prometheus metrics, and serves a read-only LAN page at
-`http://raspberrypi.local:15432/`. No external service requests are made.
+Two independently installable Node.js 24 / TypeScript applications:
 
-## Build and test
+| Package                                                            | Responsibility                                                                        |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| [cat-presence-mother](cat-presence-mother/README.md)               | NestJS HTTP/UDP ingestion, tag matching, SQLite, presence page and Prometheus metrics |
+| [cat-presence-satellite-rpi](cat-presence-satellite-rpi/README.md) | Raspberry Pi BLE scanning and raw advertisement forwarding over HTTP                  |
 
-```sh
-npm ci
-npm run build
-npm test
-npm run lint
-npm run start:prod
-```
+Each directory has its own `package.json`, lockfile, build, tests and deployment
+scripts. Run `npm ci`, `npm run build`, `npm test`, and `npm run lint` inside each
+package. After building both, run `node --test test/integration.cjs` from the root
+to verify simulated BLE reception through real HTTP into compiled mother.
+There is no root npm install or shared runtime package. Future firmware
+can live alongside these packages without joining a JavaScript workspace.
 
-Use Node.js 24 (check `node --version`). Building native npm modules with node-gyp requires Python 3,
-`build-essential`, `libbluetooth-dev`, `libudev-dev`, `libusb-1.0-0-dev`, and
-`pkg-config`. Python is only a native build prerequisite; the application and tests use Node.js. `package-lock.json` pins dependencies. The `allowScripts` entries in
-`package.json` permit the native builds on recent npm versions. Build/install on
-the Pi itself; do not copy x86 `node_modules` to ARM64. Production runs compiled
-`node dist/main.js`, without ts-node. `npm run start:dev` watches TypeScript;
-`npm run test:watch` watches tests. Templates/CSS are copied into `dist` on build.
+Only mother holds tag identities, secret files, EID derivation and matching code.
+RPi satellites send FEAA service-data bytes and RSSI as JSON. Mother also retains
+the existing CatTag v5 UDP input unchanged for other satellites.
 
-Use `npm run format` to format the project with Prettier, or `npm run format:check`
-to check formatting without changing files. Generated files and reference fixtures are excluded.
+## Deployment
 
-Tests use synthetic secrets, a SQLite fixture, mocked Bluetooth, and a real
-localhost HTTP listener. No test requires real keys. A restricted sandbox must permit local sockets for HTTP tests.
-
-## Configuration
-
-Configuration is plain JSON, loaded from `/etc/cat-tracker/config.json` by default.
-Use `--config PATH` or `TAG_CONFIG_PATH` to select another JSON file. Start with
-[config.example.json](config.example.json) for service settings and tags, or
-[tags.example.json](tags.example.json) for tags with default service settings.
-Relative secret paths resolve against the configuration file. JSON may be
-`{ "service": {...}, "tags": [...] }` or a tag array. Setting names remain snake_case,
-and environment variables override service settings. Comments and trailing commas
-are not valid JSON.
-
-| Variable                | Default                                 |
-| ----------------------- | --------------------------------------- |
-| `TAG_CONFIG_PATH`       | `/etc/cat-tracker/config.json`          |
-| `DATABASE_PATH`         | `/var/lib/cat-tracker/presence.sqlite3` |
-| `BLUETOOTH_ADAPTER`     | `0` (`hci0` and `hci1` also accepted)   |
-| `PORT`                  | `15432`                                 |
-| `UDP_PORT`              | `15433`                                 |
-| `MISSING_AFTER_SECONDS` | `60`                                    |
-| `DRIFT_WINDOWS`         | `16` (1–32)                             |
-| `SCANNER_CYCLE_SECONDS` | `300`                                   |
-
-`@nestjs/config` loads/validates settings. Foreground runs use exported environment variables; the systemd template uses
-the JSON configuration. The application does not
-silently load a working-directory `.env`. Keep EIKs in separate secret JSON files:
-`version` (1), `name`, `pair_date` (integer Unix UTC seconds), `eik_hex` (64 hex
-characters). Manufacturer/model metadata remains ignored. Invalid secrets disable
-only that tag; no usable tags, duplicate IDs, or invalid global
-settings fail startup. Secret contents and paths are never logged or rendered.
-Keep IDs stable: changing an ID starts a new presence timer.
-
-## UDP satellite input
-
-The service listens on UDP port `15433` on all IPv4 interfaces. Set `UDP_PORT` or
-`service.udp_port` to change it. It parses CatTag satellite frame version 5:
-
-| Offset | Size     | Field                                 |
-| ------ | -------- | ------------------------------------- |
-| 0      | 1        | Magic (`CA`)                          |
-| 1      | 1        | Version (`5`)                         |
-| 2      | 2        | Satellite ID (big endian)             |
-| 4      | 8        | Boot ID (big endian)                  |
-| 12     | 8        | Sequence (big endian, starts at zero) |
-| 20     | 2        | Service UUID (`FE AA`)                |
-| 22     | 6        | Address bytes as sent                 |
-| 28     | 1        | RSSI (signed int8, dBm)               |
-| 29     | 1        | Service-data length                   |
-| 30     | Variable | Unmodified service-data bytes         |
-
-The declared length must match the datagram exactly. Valid frames produce a log line
-with the sender, satellite ID, boot ID, sequence, address, RSSI, and up to 64 service-data bytes in hex.
-Invalid frames produce a warning. Valid Find Hub service data is decoded to an EID
-and passed to `TagMatcherService.observe`. A cryptographic match updates presence
-and the last-seen metric using the server's receive time.
-
-Sequence numbers must strictly increase for each satellite ID and boot ID pair.
-Duplicates and older packets are ignored; gaps are allowed. The first received
-sequence may be any value, including zero. A new boot ID starts a new sequence
-stream. Sequence tracking is in memory and resets when the server restarts.
-
-The latest matched observation supplies `sourceName`: `satellite:<id>` for UDP or
-`ble:hci<adapter>` for local scanning. The source is saved with last-seen and shown
-on the presence page, including after the tag becomes absent. RSSI is decoded from a signed
-two's-complement byte and uses the same signal validation and metrics as local
-BLE observations. Invalid RSSI still allows a matched packet to update presence.
-
-To send a sample frame locally (presence updates require a configured tag's EID):
+From either package directory, use:
 
 ```sh
-node - <<'JS'
-const data = Buffer.concat([Buffer.from([0x40]), Buffer.alloc(20)]);
-const frame = Buffer.alloc(30 + data.length);
-frame[0] = 0xca;
-frame[1] = 5;
-frame.writeUInt16BE(1, 2);
-frame.writeBigUInt64BE(1n, 4);
-frame.writeBigUInt64BE(0n, 12);
-frame.writeUInt16BE(0xfeaa, 20);
-Buffer.from([1, 2, 3, 4, 5, 6]).copy(frame, 22);
-frame.writeInt8(-63, 28);
-frame[29] = data.length;
-data.copy(frame, 30);
-const socket = require('node:dgram').createSocket('udp4');
-socket.send(frame, 15433, '127.0.0.1', () => socket.close());
-JS
+./deploy/install_remote user@host
+./deploy/setup_infra_remote user@host
+# Configure that service, then:
+./deploy/restart_remote user@host
+# Subsequent updates:
+./deploy/update_remote user@host
+./deploy/restart_remote user@host
 ```
 
-Watch the service log with `sudo journalctl -u cat-tracker -f`.
+Scripts require SSH, rsync, noninteractive remote sudo, and Node.js 24 at
+`/usr/bin/node`. Each package installs to `/opt/<package-name>` and has its own
+service user and unit. Setup enables but does not start the application. Updates
+preserve configuration and systemd overrides and do not restart automatically.
+Only allowlisted package files are copied; local secrets, databases, `.env`,
+`node_modules`, and development configuration are excluded. Deployments are
+in-place, not atomic. Build native dependencies on the target architecture.
 
-The receiver starts alongside the local BLE scanner. A working Bluetooth adapter
-is required for the application to keep running. If you have a local
-`config.dev.json`, you can start it with `node dist/main.js --config config.dev.json`.
+## Migration from cat-tracker
 
-## Raspberry Pi installation
+1. Stop and disable the old service: `sudo systemctl disable --now cat-tracker`.
+2. Back up the existing database, for example:
+   `sudo sqlite3 /var/lib/cat-tracker/presence.sqlite3 '.backup /var/lib/cat-tracker/presence.backup.sqlite3'`.
+   Back up configuration and secrets separately with restricted permissions.
+3. Install and set up mother. Its defaults still use `/etc/cat-tracker/config.json`
+   and `/var/lib/cat-tracker/presence.sqlite3`; no database format change is needed.
+   For an existing dedicated installation, transfer ownership with
+   `sudo chown -R cat-presence-mother:cat-presence-mother /var/lib/cat-tracker`
+   and `sudo chown -R root:cat-presence-mother /etc/cat-tracker`.
+   Retain directory modes 0700 for state and 0750 for configuration, and mode 0640
+   for configuration/secret files. Grant the mother user access to any externally
+   located secret files too. Remove `adapter` and `scanner_cycle_seconds` from
+   the service JSON; old extra fields are ignored.
+4. If moving mother to another machine, transfer the stopped database and tag
+   configuration/secrets securely to the same paths there, then apply ownership.
+   Satellites must receive no copies of these files.
+5. Install the satellite on each Pi and configure its systemd environment override
+   as described in its README. Stop the old scanner before starting the new one;
+   only one scanner should own an adapter.
+6. Start mother, then satellites. Verify the page and metrics, new
+   `satellite-rpi:<id>` sources, and existing UDP sources. Old persisted source
+   names remain readable and are replaced when new observations arrive.
+7. After verifying backups and mother, remove retired tag configuration/secrets
+   from machines that now run only satellites. Keep backups on trusted storage.
 
-Use Raspberry Pi OS 64-bit on Pi 4, with Node.js 24 LTS installed at `/usr/bin/node`
-and npm available to sudo. The setup script checks this; it does not replace the
-OS runtime. If Node lives elsewhere, adjust the unit's `ExecStart` accordingly.
-
-```sh
-sudo apt update
-sudo apt install -y python3 build-essential bluez libbluetooth-dev libudev-dev \
-  libusb-1.0-0-dev pkg-config libcap2-bin sqlite3 rsync
-sudo systemctl enable --now bluetooth
-sudo bluetoothctl power on
-```
-
-From this checkout, the existing remote scripts retain their interface. They
-require local/remote rsync, SSH, and noninteractive sudo on the Pi:
-
-```sh
-./deploy/install_remote rglr@192.168.0.123
-./deploy/setup_infra_remote rglr@192.168.0.123
-```
-
-Setup creates the existing `cat-tracker` service user, private state directory,
-config templates only if missing, installs dependencies, builds/tests, and
-installs/enables the unit. It does not start the tracker. Install secrets and edit
-configuration on the Pi before starting:
-
-```sh
-sudo install -o root -g cat-tracker -m 0640 /path/to/cat-a.json /etc/cat-tracker/cat-a.json
-sudo install -o root -g cat-tracker -m 0640 /path/to/cat-b.json /etc/cat-tracker/cat-b.json
-sudoedit /etc/cat-tracker/config.json
-sudo chmod 0750 /etc/cat-tracker
-sudo systemctl start cat-tracker
-sudo systemctl status cat-tracker --no-pager
-sudo journalctl -u cat-tracker -f
-sudo journalctl -u cat-tracker --since today
-```
-
-For updates use `deploy/update_remote user@host`, then `deploy/restart_remote
-user@host`. Scripts are in-place deployments, not atomic releases. No local secret files or databases are copied by these scripts.
-
-The unit preserves `/opt/cat-tracker`,
-`/var/lib/cat-tracker`, the service user, private directory permissions, and restart
-policy. It starts after Bluetooth/network/time-sync targets, restarts after 5
-seconds, and uses Nest shutdown hooks on SIGTERM/SIGINT.
-
-## Bluetooth access and diagnostics
-
-Noble uses the Linux raw HCI backend with explicit `deviceId`. The unit grants **only `CAP_NET_RAW`** through systemd's
-`AmbientCapabilities` and `CapabilityBoundingSet`, and permits `AF_BLUETOOTH` and
-`AF_NETLINK`. The service does not run as root. No capability is added to the shared
-Node binary. Raw mode requires the selected adapter to be powered on. `hci1` is
-selected by `BLUETOOTH_ADAPTER=1` in the environment file.
-
-Stop the normal service before debug scanning, then run a transient unit with the
-same user/capability (this does not open SQLite or HTTP):
-
-```sh
-sudo systemctl stop cat-tracker
-sudo systemd-run --unit=cat-tracker-debug --collect --wait --pty \
-  --property=User=cat-tracker --property=Group=cat-tracker \
-  --property=AmbientCapabilities=CAP_NET_RAW \
-  --property=CapabilityBoundingSet=CAP_NET_RAW \
-  /opt/cat-tracker/bin/debug-tag-scan
-# Ctrl-C ends the scan. Restore the service afterwards:
-sudo systemctl start cat-tracker
-```
-
-The standalone scanner prints each matched tag ID and RSSI to stdout. It reads
-the normal tag configuration, but opens neither SQLite nor HTTP. Neither raw
-packets nor EIKs are logged. Scanning filters for FEAA and allows duplicates;
-noble's HCI backend matches FEAA in service data as well as advertised UUIDs.
-Noble is configured to report advertisements
-without waiting for scan responses. Extended advertisements are auto-detected by
-noble; 32-byte EID reception requires a capable adapter. Parser/crypto support both
-20- and 32-byte EIDs regardless of radio support.
-
-The scanner cycles every five minutes, retries short failures after 5/10/20/40
-seconds, and exits after five failures. Failed cleanup is fatal, avoiding
-concurrent scanner ownership. A radio returning no packets cannot always be
-distinguished from absent tags; check scan summaries, rfkill, `bluetoothctl show`,
-and adapter permissions. Missing means not detected, not proof that a cat left.
-
-## State storage
-
-SQLite stores tag identity, creation time, last-seen timestamps, and the latest
-observation source. `sourceName` is required for every observation, status, and
-stored state. Unobserved tags and older rows without a source use `unknown`.
-Database migration fills missing sources and enforces nonempty values for future writes. Keep the
-database across restarts to preserve last-seen metrics. It uses WAL and FULL
-synchronization. Back up a live database with SQLite's `.backup` command.
-A file lock prevents two instances sharing one database. RSSI stays in memory;
-no RSSI history or Prometheus counters are persisted.
-
-Existing databases remain compatible without a destructive migration. Legacy
-columns and tables are ignored and left untouched; new databases contain only
-the presence state table.
-
-## Tracking behavior
-
-EIDs are derived using a
-32-byte AES-256-ECB block, rotation every 1024 seconds, 32-bit clock wrap, scalar
-reduction, secp160r1 / P-256 public x-coordinate. Clock is
-`trunc(now - pair_date + clock_offset_seconds)`; each tag has ±16 cached windows by
-default. Ambiguous EIDs are rejected. `@noble/curves` performs curve arithmetic and
-`node:crypto` performs AES. Known EID vectors are checked by `npm test`.
-
-Missing begins strictly **after 60 seconds** by default, using the configured
-presence timeout. Presence is evaluated from last-seen on each page request and
-is never RSSI-gated.
-
-The page is rendered server-side from `views/index.pug`, compiled once at startup
-and supplied with a fresh display model for each request. Pug escapes dynamic
-values; no HTML strings are assembled in TypeScript. The build copies Pug templates
-to `dist/views`, and `npm run format` includes Pug via `@prettier/plugin-pug`.
-
-The human-readable page at `/` displays cat name, Present / Not present, latest
-signal strength, and presence source. Absent cats and cats without a signal observation since
-startup show `—`. The existing `PresenceService` is the authoritative presence
-state service; `getAllStatuses()` supplies the web layer. The page also serves
-`/index.html`, HEAD, and CSS, with LAN-only IPv4 peer checks, no-store and CSP
-headers. There is no status API, JavaScript, polling, or automatic refresh.
-Public and IPv6 peers are rejected; forwarded headers are ignored.
-
-## Prometheus metrics
-
-Matched local BLE and satellite UDP packets flow through `TagMatcherService` → `TagObservationService`,
-which directly updates `PresenceService` and `MetricsService`. `/metrics` reads
-only a dedicated [prom-client](https://github.com/siimon/prom-client) registry and
-returns its Prometheus text content type. The existing LAN access policy applies.
-No default Node/process metrics are enabled.
-
-| Metric                                   | Type  | Labels          | Value                                                      |
-| ---------------------------------------- | ----- | --------------- | ---------------------------------------------------------- |
-| `cat_rssi_dbm`                           | Gauge | `tag`, `source` | Latest valid RSSI                                          |
-| `cat_last_seen_timestamp_seconds`        | Gauge | `tag`           | Latest cryptographically matched observation, Unix seconds |
-| `cat_source_last_seen_timestamp_seconds` | Gauge | `tag`, `source` | Latest matched observation from that source, Unix seconds  |
-
-All labels use stable configured IDs (`tag="cat-a"`). `source` is the observation's
-`sourceName` (`ble:hci<adapter>` or `satellite:<id>`). RSSI is split by source
-because signal strength from different receivers is not comparable. Last-seen gauges
-initialize from persisted timestamps; the per-source last-seen gauge is restored only
-for the persisted latest source (not `unknown`). Unknown last-seen and RSSI gauge
-series are omitted until observed, rather than inventing values or exporting
-non-finite samples. RSSI gauges retain their latest valid value; use last-seen to
-assess freshness.
-
-RSSI must be finite and between -120 and +20 dBm inclusive. Invalid values (including
-BLE's unavailable sentinel) are excluded from the gauge. Cryptographic matches still
-update presence and last-seen regardless of RSSI.
-
-Example queries (documentation only):
-
-```promql
-# Source that saw each cat most recently
-topk by (tag) (1, cat_source_last_seen_timestamp_seconds)
-
-# Seconds since last observation (never-seen tags have no timestamp series)
-time() - cat_last_seen_timestamp_seconds
-
-# Not seen for more than one hour
-time() - cat_last_seen_timestamp_seconds > 3600
-
-# Tracker unavailable: up is generated by Prometheus, not this application
-up{job="cat-tracker"} == 0
-```
-
-Alerting is owned by external Prometheus infrastructure. This application only
-exports metrics; it does not schedule alerts or deliver notifications. No
-production Prometheus/Alertmanager configuration or deployment was performed.
-
-Reference APIs: [noble adapter/capability configuration](https://github.com/stoprocent/noble#multiple-adapters-linux-specific),
-[noble custom curves](https://github.com/paulmillr/noble-curves#weierstrass-custom-weierstrass-curve--ecdsa).
-
-The package override for `multer` keeps Nest 11's transitive dependency on the
-patched 2.3.x-or-newer compatible release. This service exposes no upload routes.
-
-## Bluetooth health metrics
-
-The existing `/metrics` endpoint also exports three series labeled with the
-configured adapter (`adapter="hci0"`, or e.g. `hci1`):
-
-- `cat_bluetooth_adapter_up` (gauge): 1 when Noble reports `poweredOn`, otherwise 0.
-- `cat_bluetooth_scanner_up` (gauge): 1 only after scanning starts successfully;
-  stops, errors, adapter loss, and shutdown set it to 0.
-- `cat_bluetooth_scanner_restarts_total` (counter): automatic scan-start attempts
-  after unexpected failures. Initial startup and scheduled scan refreshes do not
-  count. Waiting for an unavailable adapter does not count until scan start is
-  attempted. The counter resets only with the process.
-
-All three initialize to zero. Adapter and scanner gauges are independent: a
-powered-on adapter can have a failed scanner. Prometheus `up == 0` indicates a
-scrape/service/network problem; adapter down indicates an adapter/BlueZ issue;
-adapter up with scanner down indicates a scanning issue. Both gauges up with a
-stale tag timestamp suggests the tag is absent or out of range, but cannot prove
-radio reception is working. The restart counter is not a health gauge.
-
-## UDP packet metrics
-
-`/metrics` also exports UDP satellite counters, labeled with the numeric satellite ID
-(`satellite="7"`) where the frame header is valid:
-
-- `cat_udp_packets_received_total` (counter): frames accepted in sequence order.
-- `cat_udp_packets_lost_total` (counter): sequence numbers skipped between accepted
-  frames of the same satellite and boot ID.
-- `cat_udp_packets_stale_total` (counter): duplicate or older frames ignored. A
-  reordered frame that arrives after a later one is counted as lost and then stale.
-- `cat_udp_packets_invalid_total` (counter, unlabeled): malformed CatTag frames.
-  Frames whose service data is not a valid Find Hub EID are ignored without being
-  counted. Starts at zero.
-
-Loss is inferred only from gaps. The first frame after a satellite boot or server
-restart has no baseline, and frames lost after the last received one are not
-counted until a later frame arrives. Frames with invalid service data do not advance
-the sequence, so if a satellite numbers such frames they appear as loss.
-
-```promql
-# UDP drop rate per satellite over five minutes
-rate(cat_udp_packets_lost_total[5m])
-/ (rate(cat_udp_packets_lost_total[5m]) + rate(cat_udp_packets_received_total[5m]))
-```
+Mother no longer exports `cat_bluetooth_*` metrics. Check satellite health using
+`journalctl -u cat-presence-satellite-rpi`; adjust monitoring accordingly.
+No remote deployment is performed by building or testing this repository.

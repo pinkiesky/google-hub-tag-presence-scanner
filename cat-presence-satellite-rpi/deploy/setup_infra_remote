@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -euo pipefail
+source "$(dirname -- "${BASH_SOURCE[0]}")/remote_common.sh"
+remote_root <<'REMOTE'
+test -f /opt/cat-presence-satellite-rpi/package.json || { echo 'Run install_remote first.' >&2; exit 1; }
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install -y python3 build-essential rsync bluez libbluetooth-dev libudev-dev libusb-1.0-0-dev pkg-config
+test -x /usr/bin/node || { echo 'Install Node.js 24 at /usr/bin/node first.' >&2; exit 1; }
+/usr/bin/node -e "if (Number(process.versions.node.split('.')[0]) !== 24) process.exit(1)"
+if ! id cat-presence-satellite-rpi >/dev/null 2>&1; then
+    useradd --system --user-group --home-dir /nonexistent --no-create-home --shell /usr/sbin/nologin cat-presence-satellite-rpi
+fi
+groupadd --system --force bluetooth
+usermod -aG bluetooth cat-presence-satellite-rpi
+systemctl enable --now bluetooth
+bluetoothctl power on
+
+cd /opt/cat-presence-satellite-rpi
+npm ci
+npm run build
+npm test
+npm run lint
+install -m 0644 deploy/cat-presence-satellite-rpi.service /etc/systemd/system/cat-presence-satellite-rpi.service
+systemctl daemon-reload
+systemctl enable cat-presence-satellite-rpi
+REMOTE
+echo 'Infrastructure ready. Configure the service before running restart_remote.'
